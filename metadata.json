@@ -1,0 +1,6 @@
+{
+  "name": "Nexus POS - Punto de Venta & Gestión",
+  "description": "Prototipo interactivo de Punto de Venta (POS) y Gestión de Negocio con roles, control de inventario en tiempo real, apertura/cierre de caja, y analíticas estratégicas.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
