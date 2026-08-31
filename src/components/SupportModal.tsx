@@ -60,15 +60,15 @@ export const SupportModal: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Editable store info local state
-  const [editStoreName, setEditStoreName] = useState(storeInfo.storeName);
-  const [editBranchName, setEditBranchName] = useState(storeInfo.branchName);
-  const [editSubtitle, setEditSubtitle] = useState(storeInfo.brandSubtitle);
-  const [editPhone, setEditPhone] = useState(storeInfo.phone);
-  const [editAddress, setEditAddress] = useState(storeInfo.address);
-  const [editCuit, setEditCuit] = useState(storeInfo.cuit);
+  const [editStoreName, setEditStoreName] = useState(storeInfo?.storeName || '');
+  const [editBranchName, setEditBranchName] = useState(storeInfo?.branchName || '');
+  const [editSubtitle, setEditSubtitle] = useState(storeInfo?.brandSubtitle || '');
+  const [editPhone, setEditPhone] = useState(storeInfo?.phone || '');
+  const [editAddress, setEditAddress] = useState(storeInfo?.address || '');
+  const [editCuit, setEditCuit] = useState(storeInfo?.cuit || '');
 
   // Master Security tab local state
-  const [newMasterEmail, setNewMasterEmail] = useState(masterAuth.email || 'riojadecoraciones@gmail.com');
+  const [newMasterEmail, setNewMasterEmail] = useState(masterAuth?.email || 'riojadecoraciones@gmail.com');
   const [newMasterPass, setNewMasterPass] = useState('');
   const [confirmMasterPass, setConfirmMasterPass] = useState('');
   const [showPass, setShowPass] = useState(false);
@@ -78,8 +78,8 @@ export const SupportModal: React.FC = () => {
 
   const handleRunDiagnosis = () => {
     setIsRunningDiagnosis(true);
-    setTimeout(() => {
-      const res = repairSystemDatabase();
+    setTimeout(async () => {
+      const res = await repairSystemDatabase();
       setDiagnosticResults(res);
       setIsRunningDiagnosis(false);
     }, 600);

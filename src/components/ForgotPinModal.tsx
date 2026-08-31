@@ -90,8 +90,8 @@ export const ForgotPinModal: React.FC<ForgotPinModalProps> = ({
     }
 
     setIsLoading(true);
-    setTimeout(() => {
-      const res = resetPinWithCode(email, otpCode, newPin);
+    setTimeout(async () => {
+      const res = await resetPinWithCode(email, otpCode, newPin);
       setIsLoading(false);
 
       if (res.success) {

@@ -22,6 +22,8 @@ import { CashShiftModal } from './components/CashShiftModal';
 import { ExpensesView } from './components/ExpensesView';
 import { SupportModal } from './components/SupportModal';
 import { MasterAuthModal } from './components/MasterAuthModal';
+import { MasterPortalView } from './components/MasterPortalView';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { Wrench, ArrowRight } from 'lucide-react';
 
 const MainLayout: React.FC = () => {
@@ -59,7 +61,7 @@ const MainLayout: React.FC = () => {
             <div className="flex items-center gap-2">
               <Wrench className="w-4 h-4 text-slate-950" />
               <span>
-                🛠️ MODO ASISTENCIA TÉCNICA ACTIVO — Sesión Desarrollador para <strong>{storeInfo.storeName}</strong> ({storeInfo.branchName})
+                🛠️ MODO ASISTENCIA TÉCNICA ACTIVO — Sesión Desarrollador para <strong>{storeInfo?.storeName || 'FARO POS'}</strong> ({storeInfo?.branchName || 'Sucursal Principal'})
               </span>
             </div>
             <button
@@ -86,6 +88,7 @@ const MainLayout: React.FC = () => {
           {activeView === 'cash_register' && <CashRegisterView />}
           {activeView === 'employees' && <EmployeesView />}
           {activeView === 'settings' && <SettingsView />}
+          {activeView === 'master_portal' && <MasterPortalView />}
         </main>
       </div>
 
@@ -115,8 +118,10 @@ const MainLayout: React.FC = () => {
 
 export default function App() {
   return (
-    <AppProvider>
-      <MainLayout />
-    </AppProvider>
+    <ErrorBoundary>
+      <AppProvider>
+        <MainLayout />
+      </AppProvider>
+    </ErrorBoundary>
   );
 }

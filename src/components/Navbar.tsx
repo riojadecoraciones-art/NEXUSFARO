@@ -16,6 +16,7 @@ import {
   LogOut,
   KeyRound,
   Shield,
+  Database,
 } from 'lucide-react';
 import { formatARS } from '../utils/currency';
 
@@ -47,6 +48,8 @@ export const Navbar: React.FC<NavbarProps> = ({
     isNotificationsPanelOpen,
     setIsNotificationsPanelOpen,
     scanBarcodeOrSku,
+    isLoadingData,
+    isSupabaseConnected,
   } = useApp();
 
   const [internalTerm, setInternalTerm] = useState<string>('');
@@ -149,6 +152,37 @@ export const Navbar: React.FC<NavbarProps> = ({
           </button>
         )}
 
+        {/* Supabase Connection Status Pill */}
+        <div
+          className={`hidden lg:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold border transition-all ${
+            isLoadingData
+              ? 'bg-blue-50 text-blue-700 border-blue-200'
+              : isSupabaseConnected
+              ? 'bg-emerald-50 text-emerald-800 border-emerald-200/90'
+              : 'bg-rose-50 text-rose-800 border-rose-200'
+          }`}
+          title={
+            isLoadingData
+              ? 'Sincronizando con Supabase...'
+              : isSupabaseConnected
+              ? 'Conectado a la base de datos Supabase (NEXUS FARO)'
+              : 'Sin conexión a Supabase'
+          }
+        >
+          <Database
+            className={`w-3.5 h-3.5 ${
+              isLoadingData
+                ? 'text-blue-500 animate-spin'
+                : isSupabaseConnected
+                ? 'text-emerald-600'
+                : 'text-rose-600'
+            }`}
+          />
+          <span className="text-[11px] font-bold">
+            {isLoadingData ? 'Sincronizando...' : isSupabaseConnected ? 'Supabase Nube' : 'Sin Conexión'}
+          </span>
+        </div>
+
         {/* Cash Shift Status Badge */}
         <button
           onClick={() => setActiveView('cash_register')}
@@ -215,7 +249,13 @@ export const Navbar: React.FC<NavbarProps> = ({
                 className="w-9 h-9 rounded-xl object-cover border border-slate-200 shadow-xs"
               />
             ) : (
-              <div className="w-9 h-9 rounded-xl bg-slate-900 text-white font-bold flex items-center justify-center text-xs shadow-xs">
+              <div className={`w-9 h-9 rounded-xl text-white font-bold flex items-center justify-center text-xs shadow-xs ${
+                currentUser.role === 'SUPERADMIN'
+                  ? 'bg-amber-600'
+                  : currentUser.role === 'DUEÑO'
+                  ? 'bg-slate-900'
+                  : 'bg-blue-600'
+              }`}>
                 {currentUser.initials || 'U'}
               </div>
             )}
@@ -230,7 +270,13 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Sesión Actual</div>
                 <div className="font-bold text-slate-900 text-sm mt-0.5 flex items-center justify-between">
                   <span>{currentUser.name}</span>
-                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${currentUser.role === 'DUEÑO' ? 'bg-emerald-100 text-emerald-800' : 'bg-blue-100 text-blue-800'}`}>
+                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+                    currentUser.role === 'SUPERADMIN'
+                      ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                      : currentUser.role === 'DUEÑO'
+                      ? 'bg-emerald-100 text-emerald-800'
+                      : 'bg-blue-100 text-blue-800'
+                  }`}>
                     {currentUser.role}
                   </span>
                 </div>

@@ -39,22 +39,23 @@ export const SettingsView: React.FC = () => {
   const isOwner = currentUser?.role === 'DUEÑO';
 
   // Store Settings state connected to storeInfo
-  const [storeName, setStoreName] = useState<string>(storeInfo.storeName);
-  const [branchName, setBranchName] = useState<string>(storeInfo.branchName);
-  const [brandSubtitle, setBrandSubtitle] = useState<string>(storeInfo.brandSubtitle || '');
-  const [cuit, setCuit] = useState<string>(storeInfo.cuit);
-  const [address, setAddress] = useState<string>(storeInfo.address);
-  const [phone, setPhone] = useState<string>(storeInfo.phone || '');
-  const [email, setEmail] = useState<string>(storeInfo.email || '');
-  const [receiptFooter, setReceiptFooter] = useState<string>(storeInfo.receiptFooter || '');
+  const [storeName, setStoreName] = useState<string>(storeInfo?.storeName || '');
+  const [branchName, setBranchName] = useState<string>(storeInfo?.branchName || '');
+  const [brandSubtitle, setBrandSubtitle] = useState<string>(storeInfo?.brandSubtitle || '');
+  const [cuit, setCuit] = useState<string>(storeInfo?.cuit || '');
+  const [address, setAddress] = useState<string>(storeInfo?.address || '');
+  const [phone, setPhone] = useState<string>(storeInfo?.phone || '');
+  const [email, setEmail] = useState<string>(storeInfo?.email || '');
+  const [receiptFooter, setReceiptFooter] = useState<string>(storeInfo?.receiptFooter || '');
   const [storeTaxPercent, setStoreTaxPercent] = useState<string>(taxPercent.toString());
 
   useEffect(() => {
-    setStoreName(storeInfo.storeName);
-    setBranchName(storeInfo.branchName);
+    if (!storeInfo) return;
+    setStoreName(storeInfo.storeName || '');
+    setBranchName(storeInfo.branchName || '');
     setBrandSubtitle(storeInfo.brandSubtitle || '');
-    setCuit(storeInfo.cuit);
-    setAddress(storeInfo.address);
+    setCuit(storeInfo.cuit || '');
+    setAddress(storeInfo.address || '');
     setPhone(storeInfo.phone || '');
     setEmail(storeInfo.email || '');
     setReceiptFooter(storeInfo.receiptFooter || '');

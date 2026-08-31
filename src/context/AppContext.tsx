@@ -17,11 +17,30 @@ import {
   FixedExpense,
   StoreInfo,
   MasterAuthConfig,
+  StoreTenant,
 } from '../types';
-import { SEED_USERS, SEED_PRODUCTS, SEED_SALES, SEED_ALERTS } from '../mockData';
+import { SEED_USERS, SEED_PRODUCTS, SEED_SALES, SEED_ALERTS, SEED_TENANTS } from '../mockData';
 import { sounds } from '../utils/soundEffects';
+import { supabase } from '../lib/supabase';
+import {
+  userService,
+  categoryService,
+  productService,
+  cashShiftService,
+  saleService,
+  stockMovementService,
+  fixedExpenseService,
+  parkedTicketService,
+  appAlertService,
+  storeSettingsService,
+  storeTenantService,
+} from '../services/supabaseService';
 
 interface AppContextType {
+  // Supabase Connection & Loading State
+  isLoadingData: boolean;
+  isSupabaseConnected: boolean;
+
   // Auth & Roles
   currentUser: User | null;
   users: User[];
@@ -31,12 +50,12 @@ interface AppContextType {
   logout: () => void;
   switchUser: (userId: string, pin: string) => boolean;
   switchUserDirect: (userId: string) => boolean;
-  addUser: (userData: Omit<User, 'id' | 'initials'>) => void;
-  updateUser: (id: string, userData: Partial<User>) => void;
-  deleteUser: (id: string) => boolean;
-  updateUserPin: (userId: string, newPin: string) => boolean;
+  addUser: (userData: Omit<User, 'id' | 'initials'>) => Promise<void>;
+  updateUser: (id: string, userData: Partial<User>) => Promise<void>;
+  deleteUser: (id: string) => Promise<boolean>;
+  updateUserPin: (userId: string, newPin: string) => Promise<boolean>;
   requestPinRecovery: (email: string) => { success: boolean; user?: User; message: string; recoveryCode?: string };
-  resetPinWithCode: (email: string, code: string, newPin: string) => { success: boolean; message: string };
+  resetPinWithCode: (email: string, code: string, newPin: string) => Promise<{ success: boolean; message: string }>;
   activeView: ActiveView;
   setActiveView: (view: ActiveView) => void;
   canAccessView: (view: ActiveView) => boolean;
@@ -45,15 +64,15 @@ interface AppContextType {
   products: Product[];
   categories: string[];
   stockMovements: StockMovement[];
-  adjustStock: (productId: string, newStock: number, reason: string, type?: 'AJUSTE_MERMA' | 'AJUSTE_CONTEO') => void;
-  addStockReceipt: (productId: string, quantityToAdd: number, reason: string) => void;
-  quickRestockProduct: (productId: string, quantityToAdd: number) => void;
-  addProduct: (productData: Omit<Product, 'id'>) => void;
-  updateProduct: (id: string, productData: Partial<Product>) => void;
-  deleteProduct: (id: string) => boolean;
-  addCategory: (name: string) => boolean;
-  updateCategory: (oldName: string, newName: string) => boolean;
-  deleteCategory: (name: string, fallbackCategory?: string) => boolean;
+  adjustStock: (productId: string, newStock: number, reason: string, type?: 'AJUSTE_MERMA' | 'AJUSTE_CONTEO') => Promise<void>;
+  addStockReceipt: (productId: string, quantityToAdd: number, reason: string) => Promise<void>;
+  quickRestockProduct: (productId: string, quantityToAdd: number) => Promise<void>;
+  addProduct: (productData: Omit<Product, 'id'>) => Promise<void>;
+  updateProduct: (id: string, productData: Partial<Product>) => Promise<void>;
+  deleteProduct: (id: string) => Promise<boolean>;
+  addCategory: (name: string) => Promise<boolean>;
+  updateCategory: (oldName: string, newName: string) => Promise<boolean>;
+  deleteCategory: (name: string, fallbackCategory?: string) => Promise<boolean>;
   lowStockProducts: Product[];
 
   // POS & Cart
@@ -72,39 +91,39 @@ interface AppContextType {
   cartTax: number;
   cartTotal: number;
   parkedTickets: ParkedTicket[];
-  parkCurrentTicket: (customerName?: string, notes?: string) => boolean;
-  resumeParkedTicket: (ticketId: string) => void;
-  deleteParkedTicket: (ticketId: string) => void;
+  parkCurrentTicket: (customerName?: string, notes?: string) => Promise<boolean>;
+  resumeParkedTicket: (ticketId: string) => Promise<void>;
+  deleteParkedTicket: (ticketId: string) => Promise<void>;
   confirmSale: (payment: {
     method: PaymentMethodType;
     breakdown: PaymentDetail[];
     amountReceived?: number;
     notes?: string;
-  }) => Sale | null;
+  }) => Promise<Sale | null>;
 
   // Cash Register & Shifts
   activeShift: CashShift | null;
   shiftsHistory: CashShift[];
   cashMovements: CashMovement[];
-  openCashShift: (initialCash: number, notes?: string) => boolean;
-  closeCashShift: (countedCash: number, notes?: string) => boolean;
-  addCashMovement: (type: 'ENTRADA' | 'RETIRO', amount: number, reason: string) => boolean;
+  openCashShift: (initialCash: number, notes?: string) => Promise<boolean>;
+  closeCashShift: (countedCash: number, notes?: string) => Promise<boolean>;
+  addCashMovement: (type: 'ENTRADA' | 'RETIRO', amount: number, reason: string) => Promise<boolean>;
 
   // Sales History & Refunds
   sales: Sale[];
-  refundSale: (saleId: string, reason?: string) => boolean;
+  refundSale: (saleId: string, reason?: string) => Promise<boolean>;
 
   // Gastos Fijos & Operativos (Para Dueño)
   expenses: FixedExpense[];
-  addExpense: (expenseData: Omit<FixedExpense, 'id' | 'createdAt'>) => void;
-  updateExpense: (id: string, updates: Partial<FixedExpense>) => void;
-  deleteExpense: (id: string) => boolean;
-  markExpenseAsPaid: (id: string, paymentMethod?: PaymentMethodType, amount?: number) => void;
-  markExpenseAsPending: (id: string) => void;
+  addExpense: (expenseData: Omit<FixedExpense, 'id' | 'createdAt'>) => Promise<void>;
+  updateExpense: (id: string, updates: Partial<FixedExpense>) => Promise<void>;
+  deleteExpense: (id: string) => Promise<boolean>;
+  markExpenseAsPaid: (id: string, paymentMethod?: PaymentMethodType, amount?: number) => Promise<void>;
+  markExpenseAsPending: (id: string) => Promise<void>;
 
   // Sucursal & Datos del Negocio Personalizables
   storeInfo: StoreInfo;
-  updateStoreInfo: (updates: Partial<StoreInfo>) => void;
+  updateStoreInfo: (updates: Partial<StoreInfo>) => Promise<void>;
 
   // Acceso Maestro de Soporte Técnico (Para el Dueño del Sistema / Desarrollador)
   masterAuth: MasterAuthConfig;
@@ -121,16 +140,26 @@ interface AppContextType {
   activateSupportMode: (pin: string) => boolean;
   deactivateSupportMode: () => void;
   exportSystemBackup: () => string;
-  importSystemBackup: (jsonContent: string) => boolean;
-  repairSystemDatabase: () => { fixedIssues: number; details: string[] };
+  importSystemBackup: (jsonContent: string) => Promise<boolean>;
+  repairSystemDatabase: () => Promise<{ fixedIssues: number; details: string[] }>;
+
+  // Clientes / Negocios Multi-Tenant (Para el Dueño de la Aplicación)
+  storeTenants: StoreTenant[];
+  createStoreTenant: (tenant: Omit<StoreTenant, 'id' | 'createdAt'>) => Promise<StoreTenant>;
+  updateStoreTenant: (id: string, updates: Partial<StoreTenant>) => Promise<void>;
+  deleteStoreTenant: (id: string) => Promise<void>;
+  loginMasterSuperAdmin: (password: string) => { success: boolean; message: string };
+  impersonateStore: (storeId: string) => void;
+  exitImpersonation: () => void;
+  isImpersonating: boolean;
 
   // Alerts & Notifications Drawer & Toasts
   alerts: AppAlert[];
   unreadAlertsCount: number;
-  dismissAlert: (id: string) => void;
-  markAlertAsRead: (id: string) => void;
-  markAllAlertsAsRead: () => void;
-  clearAllAlerts: () => void;
+  dismissAlert: (id: string) => Promise<void>;
+  markAlertAsRead: (id: string) => Promise<void>;
+  markAllAlertsAsRead: () => Promise<void>;
+  clearAllAlerts: () => Promise<void>;
   isNotificationsPanelOpen: boolean;
   setIsNotificationsPanelOpen: (open: boolean) => void;
   toasts: ToastState[];
@@ -149,11 +178,17 @@ interface AppContextType {
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  // 0. Global Loading & Supabase Connection States
+  const [isLoadingData, setIsLoadingData] = useState<boolean>(true);
+  const [isSupabaseConnected, setIsSupabaseConnected] = useState<boolean>(true);
+
   // 1. Auth & Navigation
   const [users, setUsers] = useState<User[]>(SEED_USERS);
-  const [currentUser, setCurrentUser] = useState<User | null>(SEED_USERS[0]);
-  const [isLoginModalOpen, setIsLoginModalOpen] = useState<boolean>(false);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [isLoginModalOpen, setIsLoginModalOpen] = useState<boolean>(true);
   const [activeView, setActiveViewRaw] = useState<ActiveView>('pos');
+  const [storeTenants, setStoreTenants] = useState<StoreTenant[]>(SEED_TENANTS);
+  const [isImpersonating, setIsImpersonating] = useState<boolean>(false);
 
   // 2. Inventory & Products
   const [products, setProducts] = useState<Product[]>(SEED_PRODUCTS);
@@ -170,7 +205,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // 3. Sales & History
   const [sales, setSales] = useState<Sale[]>(SEED_SALES);
 
-  // 4. Cash Shift (Caja limpia cerrada por defecto)
+  // 4. Cash Shift
   const [activeShift, setActiveShift] = useState<CashShift | null>(null);
   const [shiftsHistory, setShiftsHistory] = useState<CashShift[]>([]);
   const [cashMovements, setCashMovements] = useState<CashMovement[]>([]);
@@ -199,53 +234,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [orderDiscountPercent, setOrderDiscountPercent] = useState<number>(0);
   const [parkedTickets, setParkedTickets] = useState<ParkedTicket[]>([]);
 
-  // 6. Gastos Fijos & Operativos (Persistente)
-  const [expenses, setExpenses] = useState<FixedExpense[]>(() => {
-    try {
-      const saved = localStorage.getItem('rioja_fixed_expenses');
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
+  // 6. Gastos Fijos & Operativos
+  const [expenses, setExpenses] = useState<FixedExpense[]>([]);
+
+  // 7. Store & Branch Information
+  const [storeInfo, setStoreInfo] = useState<StoreInfo>({
+    storeName: 'NEXUS FARO',
+    branchName: 'Sucursal Principal',
+    brandSubtitle: 'Punto de Venta y Gestión',
+    cuit: '',
+    address: '',
+    phone: '',
+    email: 'riojadecoraciones@gmail.com',
+    receiptFooter: '¡Gracias por su compra!',
   });
 
-  useEffect(() => {
-    try {
-      localStorage.setItem('rioja_fixed_expenses', JSON.stringify(expenses));
-    } catch (e) {
-      console.error(e);
-    }
-  }, [expenses]);
-
-  // 7. Store & Branch Information (Personalizable para cada cliente)
-  const [storeInfo, setStoreInfo] = useState<StoreInfo>(() => {
-    try {
-      const saved = localStorage.getItem('rioja_store_info');
-      if (saved) return JSON.parse(saved);
-    } catch {
-      // fallback
-    }
-    return {
-      storeName: 'Rioja Decoraciones',
-      branchName: 'Sucursal Principal',
-      brandSubtitle: 'Decoración & Hogar',
-      cuit: '30-71829384-9',
-      address: 'Av. San Martín 450, La Rioja',
-      phone: '+54 380 442-1234',
-      email: 'riojadecoraciones@gmail.com',
-      receiptFooter: '¡Gracias por elegir Rioja Decoraciones! Conserve este comprobante.',
-    };
-  });
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('rioja_store_info', JSON.stringify(storeInfo));
-    } catch (e) {
-      console.error(e);
-    }
-  }, [storeInfo]);
-
-  // 8. Acceso Maestro de Soporte Técnico (Para el Dueño del Sistema / Desarrollador)
+  // 8. Acceso Maestro de Soporte Técnico
   const [masterAuth, setMasterAuth] = useState<MasterAuthConfig>(() => {
     try {
       const saved = localStorage.getItem('rioja_master_auth_v2');
@@ -311,7 +315,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       setToasts((prev) => [...prev, newToast]);
 
-      // If not persistent, auto dismiss after timeout
       if (!options?.isPersistent && type !== 'stock_alert') {
         setTimeout(() => {
           removeToast(id);
@@ -347,6 +350,210 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     [showToast]
   );
 
+  // ==========================================
+  // INITIAL DATA LOADER FROM SUPABASE
+  // ==========================================
+
+  const loadAllDataFromSupabase = useCallback(async () => {
+    setIsLoadingData(true);
+    try {
+      // 1. Store settings, Users & Store Tenants
+      const [fetchedSettings, fetchedUsers, fetchedStores] = await Promise.all([
+        storeSettingsService.get().catch((err) => {
+          console.warn('Error loading store settings:', err);
+          return null;
+        }),
+        userService.getAll().catch((err) => {
+          console.warn('Error loading users:', err);
+          return [];
+        }),
+        storeTenantService.getAll().catch((err) => {
+          console.warn('Error loading store tenants:', err);
+          return [];
+        }),
+      ]);
+
+      if (fetchedSettings) {
+        setStoreInfo(fetchedSettings);
+      }
+
+      if (fetchedStores && fetchedStores.length > 0) {
+        setStoreTenants(fetchedStores);
+      }
+
+      if (fetchedUsers && fetchedUsers.length > 0) {
+        setUsers(fetchedUsers);
+      } else {
+        // Seed default owner user in Supabase if table is empty
+        try {
+          const defaultUser = await userService.create(SEED_USERS[0]);
+          setUsers([defaultUser]);
+        } catch (e) {
+          console.warn('Could not seed default user in Supabase', e);
+        }
+      }
+
+      // 2. Categories & Products
+      const [fetchedCategories, fetchedProducts] = await Promise.all([
+        categoryService.getAll().catch((err) => {
+          console.warn('Error loading categories:', err);
+          return ['General', 'Cortinería', 'Telas & Tapicería', 'Decoración', 'Accesorios', 'Blanquería'];
+        }),
+        productService.getAll().catch((err) => {
+          console.warn('Error loading products:', err);
+          return [];
+        }),
+      ]);
+
+      setCategories(fetchedCategories);
+      setProducts(fetchedProducts);
+
+      // 3. Sales, Stock movements & Parked tickets
+      const [fetchedSales, fetchedStockMovements, fetchedParked] = await Promise.all([
+        saleService.getAll().catch((err) => {
+          console.warn('Error loading sales:', err);
+          return [];
+        }),
+        stockMovementService.getAll().catch((err) => {
+          console.warn('Error loading stock movements:', err);
+          return [];
+        }),
+        parkedTicketService.getAll().catch((err) => {
+          console.warn('Error loading parked tickets:', err);
+          return [];
+        }),
+      ]);
+
+      setSales(fetchedSales);
+      setStockMovements(fetchedStockMovements);
+      setParkedTickets(fetchedParked);
+
+      // 4. Cash shifts & Movements
+      const [fetchedShifts, activeShiftData, fetchedMovements] = await Promise.all([
+        cashShiftService.getAll().catch((err) => {
+          console.warn('Error loading cash shifts:', err);
+          return [];
+        }),
+        cashShiftService.getActive().catch((err) => {
+          console.warn('Error loading active shift:', err);
+          return null;
+        }),
+        cashShiftService.getAllMovements().catch((err) => {
+          console.warn('Error loading cash movements:', err);
+          return [];
+        }),
+      ]);
+
+      setShiftsHistory(fetchedShifts.filter((s) => s.status === 'CERRADA'));
+      setActiveShift(activeShiftData);
+      setCashMovements(fetchedMovements);
+
+      // 5. Fixed Expenses & Alerts
+      const [fetchedExpenses, fetchedAlerts] = await Promise.all([
+        fixedExpenseService.getAll().catch((err) => {
+          console.warn('Error loading expenses:', err);
+          return [];
+        }),
+        appAlertService.getAll().catch((err) => {
+          console.warn('Error loading alerts:', err);
+          return [];
+        }),
+      ]);
+
+      setExpenses(fetchedExpenses);
+      setAlerts(fetchedAlerts);
+      setIsSupabaseConnected(true);
+    } catch (error) {
+      console.error('Failed to load complete dataset from Supabase:', error);
+      setIsSupabaseConnected(false);
+      showToast('No se pudo sincronizar con Supabase. Verifique la conexión.', 'warning');
+    } finally {
+      setIsLoadingData(false);
+    }
+  }, [showToast]);
+
+  useEffect(() => {
+    loadAllDataFromSupabase();
+  }, [loadAllDataFromSupabase]);
+
+  // ==========================================
+  // REALTIME SUBSCRIPTIONS
+  // ==========================================
+
+  useEffect(() => {
+    const channel = supabase
+      .channel('nexus-db-realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'products' },
+        async () => {
+          try {
+            const freshProducts = await productService.getAll();
+            setProducts(freshProducts);
+          } catch (e) {
+            console.error('Realtime products refresh error:', e);
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'sales' },
+        async () => {
+          try {
+            const freshSales = await saleService.getAll();
+            setSales(freshSales);
+          } catch (e) {
+            console.error('Realtime sales refresh error:', e);
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'cash_shifts' },
+        async () => {
+          try {
+            const [freshShifts, freshActive] = await Promise.all([
+              cashShiftService.getAll(),
+              cashShiftService.getActive(),
+            ]);
+            setShiftsHistory(freshShifts.filter((s) => s.status === 'CERRADA'));
+            setActiveShift(freshActive);
+          } catch (e) {
+            console.error('Realtime shifts refresh error:', e);
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'fixed_expenses' },
+        async () => {
+          try {
+            const freshExpenses = await fixedExpenseService.getAll();
+            setExpenses(freshExpenses);
+          } catch (e) {
+            console.error('Realtime expenses refresh error:', e);
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'store_settings' },
+        async () => {
+          try {
+            const freshSettings = await storeSettingsService.get();
+            setStoreInfo(freshSettings);
+          } catch (e) {
+            console.error('Realtime settings refresh error:', e);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
   // Unread alerts count
   const unreadAlertsCount = useMemo(() => {
     return alerts.filter((a) => !a.read).length;
@@ -359,21 +566,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const canAccessView = (view: ActiveView): boolean => {
     if (!currentUser) return false;
-    if (currentUser.role === 'DUEÑO') return true;
-    // Empleados/Cajeros only have access to POS and Cash Register
-    return view === 'pos' || view === 'cash_register';
+    if (currentUser.role === 'SUPERADMIN' || isSupportMode) return true;
+    if (currentUser.role === 'DUEÑO') {
+      return view !== 'master_portal';
+    }
+    // CAJERO (Empleado)
+    if (view === 'pos' || view === 'cash_register') return true;
+    if (view === 'inventory' && currentUser.canManageInventory) return true;
+    return false;
   };
 
   const setActiveView = (view: ActiveView) => {
-    if (currentUser && currentUser.role !== 'DUEÑO' && !canAccessView(view)) {
-      showToast('Acceso restringido: Esta sección es exclusiva para Administradores / Dueños', 'warning');
-      setActiveViewRaw('pos');
+    if (currentUser && !canAccessView(view)) {
+      showToast('Acceso restringido: Esta sección no está habilitada para tu perfil', 'warning');
+      setActiveViewRaw(currentUser.role === 'DUEÑO' ? 'dashboard' : 'pos');
       return;
     }
     setActiveViewRaw(view);
   };
 
-  // Auth Functions
+  // ==========================================
+  // AUTH FUNCTIONS
+  // ==========================================
+
   const login = (userId: string, pin: string): boolean => {
     const targetUser = users.find((u) => u.id === userId);
     if (!targetUser) {
@@ -389,7 +604,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setIsLoginModalOpen(false);
     showToast(`Bienvenido/a, ${targetUser.name} (${targetUser.roleTitle})`, 'success');
 
-    if (targetUser.role === 'DUEÑO') {
+    if (targetUser.role === 'SUPERADMIN') {
+      setIsSupportMode(true);
+      setActiveViewRaw('master_portal');
+    } else if (targetUser.role === 'DUEÑO') {
       setActiveViewRaw('dashboard');
     } else {
       setActiveViewRaw('pos');
@@ -399,8 +617,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const logout = () => {
     setCurrentUser(null);
+    setIsSupportMode(false);
+    try {
+      sessionStorage.removeItem('rioja_support_mode');
+    } catch (e) {
+      console.error(e);
+    }
     setIsLoginModalOpen(true);
-    showToast('Sesión cerrada', 'info');
+    showToast('Sesión cerrada correctamente', 'info');
   };
 
   const switchUser = (userId: string, pin: string): boolean => {
@@ -416,8 +640,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setCurrentUser(targetUser);
     setIsLoginModalOpen(false);
-    showToast(`Cambiado a ${targetUser.name}`, 'info');
-    if (targetUser.role === 'DUEÑO') {
+    showToast(`Sesión cambiada a ${targetUser.name}`, 'info');
+    if (targetUser.role === 'SUPERADMIN') {
+      setIsSupportMode(true);
+      setActiveViewRaw('master_portal');
+    } else if (targetUser.role === 'DUEÑO') {
       if (activeView === 'pos' && cart.length === 0) {
         setActiveViewRaw('dashboard');
       }
@@ -439,7 +666,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setCurrentUser(targetUser);
     setIsLoginModalOpen(false);
     showToast(`Sesión cambiada a ${targetUser.name} (${targetUser.roleTitle})`, 'info');
-    if (targetUser.role === 'DUEÑO') {
+    if (targetUser.role === 'SUPERADMIN') {
+      setIsSupportMode(true);
+      setActiveViewRaw('master_portal');
+    } else if (targetUser.role === 'DUEÑO') {
       if (activeView === 'pos' && cart.length === 0) {
         setActiveViewRaw('dashboard');
       }
@@ -496,11 +726,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   };
 
-  const resetPinWithCode = (
+  const resetPinWithCode = async (
     email: string,
     code: string,
     newPin: string
-  ): { success: boolean; message: string } => {
+  ): Promise<{ success: boolean; message: string }> => {
     const cleanEmail = email.trim().toLowerCase();
     const cleanCode = code.trim();
     const cleanPin = newPin.trim();
@@ -536,6 +766,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
     }
 
+    try {
+      await userService.updatePin(targetUser.id, cleanPin);
+    } catch (e) {
+      console.error('Error updating pin in Supabase:', e);
+    }
+
     // Update PIN in state
     setUsers((prev) =>
       prev.map((u) => (u.id === targetUser.id ? { ...u, pin: cleanPin } : u))
@@ -559,9 +795,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   };
 
-  const updateUserPin = (userId: string, newPin: string): boolean => {
+  const updateUserPin = async (userId: string, newPin: string): Promise<boolean> => {
     if (newPin.length !== 4 || !/^\d{4}$/.test(newPin)) {
       showToast('El PIN debe tener 4 dígitos numéricos', 'error');
+      return false;
+    }
+
+    try {
+      await userService.updatePin(userId, newPin);
+    } catch (e) {
+      console.error('Error updating PIN in Supabase:', e);
+      showToast('Error al actualizar PIN en el servidor', 'error');
       return false;
     }
 
@@ -577,7 +821,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return true;
   };
 
-  const addUser = (userData: Omit<User, 'id' | 'initials'>) => {
+  const addUser = async (userData: Omit<User, 'id' | 'initials'>) => {
     const initials = userData.name
       .split(' ')
       .map((n) => n[0])
@@ -594,11 +838,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         `https://images.unsplash.com/photo-${1534528741775 + users.length * 1000}?w=150&auto=format&fit=crop&q=80`,
     };
 
-    setUsers((prev) => [...prev, newUser]);
-    showToast(`Empleado ${newUser.name} registrado con éxito`, 'success');
+    try {
+      const created = await userService.create(newUser);
+      setUsers((prev) => [...prev, created]);
+      showToast(`Empleado ${created.name} registrado con éxito`, 'success');
+    } catch (e) {
+      console.error('Error inserting user to Supabase:', e);
+      setUsers((prev) => [...prev, newUser]);
+      showToast(`Empleado registrado localmente`, 'warning');
+    }
   };
 
-  const updateUser = (id: string, userData: Partial<User>) => {
+  const updateUser = async (id: string, userData: Partial<User>) => {
+    try {
+      await userService.update(id, userData);
+    } catch (e) {
+      console.error('Error updating user in Supabase:', e);
+    }
+
     setUsers((prev) =>
       prev.map((u) => {
         if (u.id === id) {
@@ -624,7 +881,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     showToast('Datos de usuario actualizados correctamente', 'success');
   };
 
-  const deleteUser = (id: string): boolean => {
+  const deleteUser = async (id: string): Promise<boolean> => {
     if (!currentUser || currentUser.role !== 'DUEÑO') {
       showToast('Solo el dueño puede eliminar cuentas de usuario', 'error');
       return false;
@@ -638,13 +895,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const targetUser = users.find((u) => u.id === id);
     if (!targetUser) return false;
 
+    try {
+      await userService.delete(id);
+    } catch (e) {
+      console.error('Error deleting user in Supabase:', e);
+    }
+
     setUsers((prev) => prev.filter((u) => u.id !== id));
     showToast(`Empleado ${targetUser.name} eliminado del sistema`, 'info');
     return true;
   };
 
-  // Cash Shift Operations
-  const openCashShift = (initialCash: number, notes?: string): boolean => {
+  // ==========================================
+  // CASH SHIFT OPERATIONS
+  // ==========================================
+
+  const openCashShift = async (initialCash: number, notes?: string): Promise<boolean> => {
     if (!currentUser) return false;
     if (activeShift && activeShift.status === 'ABIERTA') {
       showToast('Ya existe un turno de caja abierto', 'warning');
@@ -667,12 +933,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       notes: notes || '',
     };
 
-    setActiveShift(newShift);
+    try {
+      const created = await cashShiftService.openShift(newShift);
+      setActiveShift(created);
+    } catch (e) {
+      console.error('Error opening shift in Supabase:', e);
+      setActiveShift(newShift);
+    }
+
     showToast(`Caja abierta con fondo inicial de $${Number(initialCash).toFixed(2)}`, 'success');
     return true;
   };
 
-  const addCashMovement = (type: 'ENTRADA' | 'RETIRO', amount: number, reason: string): boolean => {
+  const addCashMovement = async (type: 'ENTRADA' | 'RETIRO', amount: number, reason: string): Promise<boolean> => {
     if (!activeShift || activeShift.status !== 'ABIERTA') {
       showToast('Debes tener la caja abierta para registrar movimientos', 'error');
       return false;
@@ -696,26 +969,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       cashierName: currentUser?.name || 'Cajero',
     };
 
-    setCashMovements((prev) => [movement, ...prev]);
+    const newIn = type === 'ENTRADA' ? activeShift.totalIn + amount : activeShift.totalIn;
+    const newOut = type === 'RETIRO' ? activeShift.totalOut + amount : activeShift.totalOut;
+    const newExpected = activeShift.initialCash + activeShift.cashSales + newIn - newOut;
 
-    setActiveShift((prev) => {
-      if (!prev) return null;
-      const newIn = type === 'ENTRADA' ? prev.totalIn + amount : prev.totalIn;
-      const newOut = type === 'RETIRO' ? prev.totalOut + amount : prev.totalOut;
-      const newExpected = prev.initialCash + prev.cashSales + newIn - newOut;
-      return {
-        ...prev,
-        totalIn: newIn,
-        totalOut: newOut,
-        expectedCash: newExpected,
-      };
-    });
+    try {
+      await Promise.all([
+        cashShiftService.addMovement(movement),
+        cashShiftService.updateShift(activeShift.id, {
+          totalIn: newIn,
+          totalOut: newOut,
+          expectedCash: newExpected,
+        }),
+      ]);
+    } catch (e) {
+      console.error('Error saving cash movement in Supabase:', e);
+    }
+
+    setCashMovements((prev) => [movement, ...prev]);
+    setActiveShift((prev) => (prev ? { ...prev, totalIn: newIn, totalOut: newOut, expectedCash: newExpected } : null));
 
     showToast(`${type === 'ENTRADA' ? 'Ingreso' : 'Retiro'} de $${amount.toFixed(2)} registrado`, 'info');
     return true;
   };
 
-  const closeCashShift = (countedCash: number, notes?: string): boolean => {
+  const closeCashShift = async (countedCash: number, notes?: string): Promise<boolean> => {
     if (!activeShift || activeShift.status !== 'ABIERTA') {
       showToast('No hay una caja abierta para cerrar', 'error');
       return false;
@@ -723,15 +1001,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const expected = activeShift.expectedCash;
     const diff = Number(countedCash) - expected;
+    const closedAt = new Date().toISOString();
 
     const closedShift: CashShift = {
       ...activeShift,
-      closedAt: new Date().toISOString(),
+      closedAt,
       status: 'CERRADA',
       countedCash: Number(countedCash),
       difference: diff,
       notes: notes || activeShift.notes,
     };
+
+    try {
+      await cashShiftService.updateShift(activeShift.id, {
+        closedAt,
+        status: 'CERRADA',
+        countedCash: Number(countedCash),
+        difference: diff,
+        notes: notes || activeShift.notes,
+      });
+    } catch (e) {
+      console.error('Error closing cash shift in Supabase:', e);
+    }
 
     setShiftsHistory((prev) => [closedShift, ...prev]);
     setActiveShift(null);
@@ -739,27 +1030,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // If difference is significant, create an alert
     if (Math.abs(diff) > 0.01) {
       const isShortage = diff < 0;
-      setAlerts((prev) => [
-        {
-          id: `alt-${Date.now()}`,
-          type: 'CAJA_DIFERENCIA',
-          title: `Caja cerrada con ${isShortage ? 'faltante' : 'sobrante'}`,
-          message: `Turno de ${closedShift.cashierName}: diferencia de ${isShortage ? '-' : '+'}$${Math.abs(diff).toFixed(2)} (Esperado: $${expected.toFixed(2)}, Contado: $${Number(countedCash).toFixed(2)})`,
-          timestamp: 'Recién',
-          read: false,
-          actionRoute: 'cash_register',
-          actionLabel: 'AUDITAR',
-          severity: 'info',
-        },
-        ...prev,
-      ]);
+      const diffAlert: AppAlert = {
+        id: `alt-${Date.now()}`,
+        type: 'CAJA_DIFERENCIA',
+        title: `Caja cerrada con ${isShortage ? 'faltante' : 'sobrante'}`,
+        message: `Turno de ${closedShift.cashierName}: diferencia de ${isShortage ? '-' : '+'}$${Math.abs(diff).toFixed(2)} (Esperado: $${expected.toFixed(2)}, Contado: $${Number(countedCash).toFixed(2)})`,
+        timestamp: 'Recién',
+        read: false,
+        actionRoute: 'cash_register',
+        actionLabel: 'AUDITAR',
+        severity: 'info',
+      };
+
+      try {
+        await appAlertService.create(diffAlert);
+      } catch (e) {
+        console.error('Error saving shift alert in Supabase:', e);
+      }
+
+      setAlerts((prev) => [diffAlert, ...prev]);
     }
 
     showToast(`Caja cerrada exitosamente. Diferencia: ${diff >= 0 ? '+' : ''}$${diff.toFixed(2)}`, 'success');
     return true;
   };
 
-  // Cart Calculations
+  // ==========================================
+  // CART CALCULATIONS
+  // ==========================================
+
   const { cartSubtotal, cartDiscountAmount, cartTax, cartTotal } = useMemo(() => {
     const rawSubtotal = cart.reduce((sum, item) => {
       const itemPrice = item.product.salePrice * item.quantity;
@@ -802,25 +1101,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   }, [showToast]);
 
-  // Barcode / SKU Scanner Handler (for USB Laser Gun & Keyboard Emulation)
   const scanBarcodeOrSku = useCallback((code: string): { success: boolean; product?: Product; error?: string } => {
     const clean = code.trim();
     if (!clean) return { success: false, error: 'Código vacío' };
 
-    // 1. Exact match with Barcode (case-insensitive)
     let found = products.find((p) => p.barcode && p.barcode.trim().toLowerCase() === clean.toLowerCase());
 
-    // 2. Exact match with SKU (case-insensitive)
     if (!found) {
       found = products.find((p) => p.sku && p.sku.trim().toLowerCase() === clean.toLowerCase());
     }
 
-    // 3. Exact match with Product Name (case-insensitive)
     if (!found) {
       found = products.find((p) => p.name.trim().toLowerCase() === clean.toLowerCase());
     }
 
-    // 4. Fallback: unique unambiguous match by code / SKU
     if (!found) {
       const candidates = products.filter(
         (p) =>
@@ -844,7 +1138,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return { success: false, product: found, error: 'Agotado' };
     }
 
-    // Successfully found and in stock: add to cart + play beep + toast
     addToCart(found);
     sounds.playScannerBeep();
     showToast(`✓ ${found.name} agregado al carrito ($${found.salePrice.toFixed(2)})`, 'success');
@@ -877,8 +1170,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setOrderDiscountPercent(0);
   };
 
-  // Park Tickets
-  const parkCurrentTicket = (customerName?: string, notes?: string): boolean => {
+  // ==========================================
+  // PARK TICKETS
+  // ==========================================
+
+  const parkCurrentTicket = async (customerName?: string, notes?: string): Promise<boolean> => {
     if (cart.length === 0) {
       showToast('El carrito está vacío para guardar en espera', 'warning');
       return false;
@@ -893,13 +1189,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       notes: notes || '',
     };
 
+    try {
+      await parkedTicketService.create(newTicket);
+    } catch (e) {
+      console.error('Error saving parked ticket in Supabase:', e);
+    }
+
     setParkedTickets((prev) => [...prev, newTicket]);
     clearCart();
     showToast(`Venta puesta en espera (${newTicket.customerName})`, 'info');
     return true;
   };
 
-  const resumeParkedTicket = (ticketId: string) => {
+  const resumeParkedTicket = async (ticketId: string) => {
     const target = parkedTickets.find((t) => t.id === ticketId);
     if (!target) return;
 
@@ -908,23 +1210,38 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return;
     }
 
+    try {
+      await parkedTicketService.delete(ticketId);
+    } catch (e) {
+      console.error('Error deleting parked ticket from Supabase:', e);
+    }
+
     setCart(target.items);
     setParkedTickets((prev) => prev.filter((t) => t.id !== ticketId));
     showToast(`Venta reanudada (${target.customerName})`, 'success');
   };
 
-  const deleteParkedTicket = (ticketId: string) => {
+  const deleteParkedTicket = async (ticketId: string) => {
+    try {
+      await parkedTicketService.delete(ticketId);
+    } catch (e) {
+      console.error('Error deleting parked ticket from Supabase:', e);
+    }
+
     setParkedTickets((prev) => prev.filter((t) => t.id !== ticketId));
     showToast('Venta en espera eliminada', 'info');
   };
 
-  // Confirm Sale (Core atomic flow with automatic low stock warning trigger)
-  const confirmSale = (payment: {
+  // ==========================================
+  // CONFIRM SALE (Core atomic flow connected to Supabase)
+  // ==========================================
+
+  const confirmSale = async (payment: {
     method: PaymentMethodType;
     breakdown: PaymentDetail[];
     amountReceived?: number;
     notes?: string;
-  }): Sale | null => {
+  }): Promise<Sale | null> => {
     if (!currentUser) {
       showToast('Debes iniciar sesión para cobrar', 'error');
       return null;
@@ -1009,7 +1326,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           stock: newStock,
         };
 
-        newStockMovements.push({
+        const movement: StockMovement = {
           id: `stk-${Date.now()}-${item.product.id}`,
           productId: item.product.id,
           productName: item.product.name,
@@ -1020,7 +1337,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           newStock,
           reason: `Venta ${ticketNumber}`,
           userName: currentUser.name,
-        });
+        };
+
+        newStockMovements.push(movement);
 
         // Trigger stock alerts if threshold breached or reached zero
         if (newStock === 0) {
@@ -1067,23 +1386,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     });
 
-    setProducts(updatedProducts);
-    setStockMovements((prev) => [...newStockMovements, ...prev]);
-
-    if (triggeredAlerts.length > 0) {
-      // Remove any previous duplicate alert for same product and prepend new ones
-      const triggeredIds = triggeredAlerts.map((a) => a.productId).filter(Boolean);
-      setAlerts((prev) => [
-        ...triggeredAlerts,
-        ...prev.filter((a) => !triggeredIds.includes(a.productId)),
-      ]);
-
-      // Fire rich persistent low stock toasts automatically
-      productsWarningTriggered.forEach(({ product, stock }) => {
-        showStockAlertToast(product, stock);
-      });
-    }
-
     // 2. Update active shift totals
     let cashIncrement = 0;
     let cardIncrement = 0;
@@ -1095,12 +1397,55 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       else if (p.method === 'TRANSFERENCIA_QR') transferIncrement += p.amount;
     });
 
+    const newCashSales = activeShift.cashSales + cashIncrement;
+    const newCardSales = activeShift.cardSales + cardIncrement;
+    const newTransferSales = activeShift.transferSales + transferIncrement;
+    const newExpected = activeShift.initialCash + newCashSales + activeShift.totalIn - activeShift.totalOut;
+
+    // 3. PERSIST EVERYTHING ASYNCHRONOUSLY TO SUPABASE
+    try {
+      await Promise.all([
+        // Insert sale & items
+        saleService.create(newSale),
+        // Update product stocks in DB
+        ...cart.map((item) => {
+          const p = updatedProducts.find((x) => x.id === item.product.id);
+          return p ? productService.updateStock(p.id, p.stock) : Promise.resolve();
+        }),
+        // Insert stock movements in DB
+        ...newStockMovements.map((mov) => stockMovementService.create(mov)),
+        // Update active shift in DB
+        cashShiftService.updateShift(activeShift.id, {
+          cashSales: newCashSales,
+          cardSales: newCardSales,
+          transferSales: newTransferSales,
+          expectedCash: newExpected,
+        }),
+        // Insert any triggered alerts in DB
+        ...triggeredAlerts.map((alert) => appAlertService.create(alert)),
+      ]);
+    } catch (dbErr) {
+      console.error('Error persisting sale to Supabase:', dbErr);
+    }
+
+    // 4. Update React State
+    setProducts(updatedProducts);
+    setStockMovements((prev) => [...newStockMovements, ...prev]);
+
+    if (triggeredAlerts.length > 0) {
+      const triggeredIds = triggeredAlerts.map((a) => a.productId).filter(Boolean);
+      setAlerts((prev) => [
+        ...triggeredAlerts,
+        ...prev.filter((a) => !triggeredIds.includes(a.productId)),
+      ]);
+
+      productsWarningTriggered.forEach(({ product, stock }) => {
+        showStockAlertToast(product, stock);
+      });
+    }
+
     setActiveShift((prev) => {
       if (!prev) return null;
-      const newCashSales = prev.cashSales + cashIncrement;
-      const newCardSales = prev.cardSales + cardIncrement;
-      const newTransferSales = prev.transferSales + transferIncrement;
-      const newExpected = prev.initialCash + newCashSales + prev.totalIn - prev.totalOut;
       return {
         ...prev,
         cashSales: newCashSales,
@@ -1110,10 +1455,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
     });
 
-    // 3. Save Sale
     setSales((prev) => [newSale, ...prev]);
 
-    // 4. Clear cart & feedback
+    // 5. Clear cart & feedback
     clearCart();
     sounds.playSaleSuccessSound();
     showToast(`Venta ${ticketNumber} registrada ($${cartTotal.toFixed(2)})`, 'success');
@@ -1121,8 +1465,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return newSale;
   };
 
-  // Refund / Anulación de Venta
-  const refundSale = (saleId: string, reason?: string): boolean => {
+  // ==========================================
+  // REFUND / ANULACIÓN DE VENTA
+  // ==========================================
+
+  const refundSale = async (saleId: string, reason?: string): Promise<boolean> => {
     if (!currentUser) return false;
     if (currentUser.role !== 'DUEÑO' && !currentUser.canRefund) {
       showToast('No tienes permiso para realizar devoluciones o anular ventas', 'error');
@@ -1167,29 +1514,52 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           reason: `Devolución ${sale.ticketNumber}: ${reason || 'Solicitud cliente'}`,
           userName: currentUser.name,
         });
-
-        // If stock now above minimum, clear any low stock alert
-        if (newStock > updatedProducts[idx].minStock) {
-          setAlerts((prev) => prev.filter((a) => a.productId !== item.productId));
-        }
       }
     });
 
-    setProducts(updatedProducts);
-    setStockMovements((prev) => [...newStockMovements, ...prev]);
-
     // 2. Adjust shift totals if active
-    if (activeShift) {
-      let cashRefund = 0;
-      let cardRefund = 0;
-      let transferRefund = 0;
+    let cashRefund = 0;
+    let cardRefund = 0;
+    let transferRefund = 0;
 
+    if (activeShift) {
       sale.paymentBreakdown.forEach((p) => {
         if (p.method === 'EFECTIVO') cashRefund += p.amount;
         else if (p.method === 'TARJETA') cardRefund += p.amount;
         else if (p.method === 'TRANSFERENCIA_QR') transferRefund += p.amount;
       });
+    }
 
+    // 3. Persist refund to Supabase
+    try {
+      await Promise.all([
+        saleService.refund(saleId, currentUser.name, timestamp),
+        ...sale.items.map((item) => {
+          const p = updatedProducts.find((x) => x.id === item.productId);
+          return p ? productService.updateStock(p.id, p.stock) : Promise.resolve();
+        }),
+        ...newStockMovements.map((mov) => stockMovementService.create(mov)),
+        activeShift
+          ? cashShiftService.updateShift(activeShift.id, {
+              cashSales: Math.max(0, activeShift.cashSales - cashRefund),
+              cardSales: Math.max(0, activeShift.cardSales - cardRefund),
+              transferSales: Math.max(0, activeShift.transferSales - transferRefund),
+              expectedCash:
+                activeShift.initialCash +
+                Math.max(0, activeShift.cashSales - cashRefund) +
+                activeShift.totalIn -
+                activeShift.totalOut,
+            })
+          : Promise.resolve(),
+      ]);
+    } catch (e) {
+      console.error('Error refunding sale in Supabase:', e);
+    }
+
+    setProducts(updatedProducts);
+    setStockMovements((prev) => [...newStockMovements, ...prev]);
+
+    if (activeShift) {
       setActiveShift((prev) => {
         if (!prev) return null;
         const newCashSales = Math.max(0, prev.cashSales - cashRefund);
@@ -1206,7 +1576,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
     }
 
-    // 3. Mark sale as refunded
     setSales((prev) =>
       prev.map((s) =>
         s.id === saleId
@@ -1225,8 +1594,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return true;
   };
 
-  // Inventory Management Actions
-  const adjustStock = (
+  // ==========================================
+  // INVENTORY & PRODUCT MANAGEMENT
+  // ==========================================
+
+  const adjustStock = async (
     productId: string,
     newStock: number,
     reason: string,
@@ -1245,27 +1617,34 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const safeNewStock = Math.max(0, newStock);
     const delta = safeNewStock - previousStock;
 
+    const movement: StockMovement = {
+      id: `stk-adj-${Date.now()}`,
+      productId,
+      productName: prod.name,
+      timestamp: new Date().toISOString(),
+      type,
+      quantityDelta: delta,
+      previousStock,
+      newStock: safeNewStock,
+      reason,
+      userName: currentUser.name,
+    };
+
+    try {
+      await Promise.all([
+        productService.updateStock(productId, safeNewStock),
+        stockMovementService.create(movement),
+      ]);
+    } catch (e) {
+      console.error('Error adjusting stock in Supabase:', e);
+    }
+
     setProducts((prev) =>
       prev.map((p) => (p.id === productId ? { ...p, stock: safeNewStock } : p))
     );
 
-    setStockMovements((prev) => [
-      {
-        id: `stk-adj-${Date.now()}`,
-        productId,
-        productName: prod.name,
-        timestamp: new Date().toISOString(),
-        type,
-        quantityDelta: delta,
-        previousStock,
-        newStock: safeNewStock,
-        reason,
-        userName: currentUser.name,
-      },
-      ...prev,
-    ]);
+    setStockMovements((prev) => [movement, ...prev]);
 
-    // Check if new stock breaches minStock or is restored
     if (safeNewStock <= prod.minStock) {
       const isOut = safeNewStock === 0;
       const newAlert: AppAlert = {
@@ -1289,17 +1668,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         severity: isOut ? 'critical' : 'warning',
       };
 
+      try {
+        await appAlertService.create(newAlert);
+      } catch (e) {
+        console.error('Error saving alert in Supabase:', e);
+      }
+
       setAlerts((prev) => [newAlert, ...prev.filter((a) => a.productId !== prod.id)]);
       showStockAlertToast({ ...prod, stock: safeNewStock }, safeNewStock);
     } else {
-      // Clear alert if resolved
       setAlerts((prev) => prev.filter((a) => a.productId !== prod.id));
     }
 
     showToast(`Stock de "${prod.name}" ajustado a ${safeNewStock} u.`, 'success');
   };
 
-  const addStockReceipt = (productId: string, quantityToAdd: number, reason: string) => {
+  const addStockReceipt = async (productId: string, quantityToAdd: number, reason: string) => {
     if (!currentUser) return;
     if (currentUser.role !== 'DUEÑO' && !currentUser.canManageInventory) {
       showToast('No tienes permiso para recibir mercadería', 'error');
@@ -1312,27 +1696,34 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const previousStock = prod.stock;
     const newStock = previousStock + quantityToAdd;
 
+    const movement: StockMovement = {
+      id: `stk-rec-${Date.now()}`,
+      productId,
+      productName: prod.name,
+      timestamp: new Date().toISOString(),
+      type: 'INGRESO',
+      quantityDelta: quantityToAdd,
+      previousStock,
+      newStock,
+      reason: reason || 'Ingreso de mercadería / Proveedor',
+      userName: currentUser.name,
+    };
+
+    try {
+      await Promise.all([
+        productService.updateStock(productId, newStock),
+        stockMovementService.create(movement),
+      ]);
+    } catch (e) {
+      console.error('Error adding stock receipt in Supabase:', e);
+    }
+
     setProducts((prev) =>
       prev.map((p) => (p.id === productId ? { ...p, stock: newStock } : p))
     );
 
-    setStockMovements((prev) => [
-      {
-        id: `stk-rec-${Date.now()}`,
-        productId,
-        productName: prod.name,
-        timestamp: new Date().toISOString(),
-        type: 'INGRESO',
-        quantityDelta: quantityToAdd,
-        previousStock,
-        newStock,
-        reason: reason || 'Ingreso de mercadería / Proveedor',
-        userName: currentUser.name,
-      },
-      ...prev,
-    ]);
+    setStockMovements((prev) => [movement, ...prev]);
 
-    // Clear low stock alert if resolved
     if (newStock > prod.minStock) {
       setAlerts((prev) => prev.filter((a) => a.productId !== prod.id && !a.message.includes(prod.name)));
     }
@@ -1340,39 +1731,44 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     showToast(`Se agregaron +${quantityToAdd} unidades a "${prod.name}"`, 'success');
   };
 
-  // Quick One-Click Restock from Notification Panel or Toasts
-  const quickRestockProduct = (productId: string, quantityToAdd: number) => {
+  const quickRestockProduct = async (productId: string, quantityToAdd: number) => {
     const prod = products.find((p) => p.id === productId);
     if (!prod) return;
 
     const previousStock = prod.stock;
     const newStock = previousStock + quantityToAdd;
 
+    const movement: StockMovement = {
+      id: `stk-quick-${Date.now()}`,
+      productId,
+      productName: prod.name,
+      timestamp: new Date().toISOString(),
+      type: 'INGRESO',
+      quantityDelta: quantityToAdd,
+      previousStock,
+      newStock,
+      reason: 'Reposición rápida desde panel de alertas',
+      userName: currentUser?.name || 'Sistema',
+    };
+
+    try {
+      await Promise.all([
+        productService.updateStock(productId, newStock),
+        stockMovementService.create(movement),
+      ]);
+    } catch (e) {
+      console.error('Error quick restocking in Supabase:', e);
+    }
+
     setProducts((prev) =>
       prev.map((p) => (p.id === productId ? { ...p, stock: newStock } : p))
     );
 
-    setStockMovements((prev) => [
-      {
-        id: `stk-quick-${Date.now()}`,
-        productId,
-        productName: prod.name,
-        timestamp: new Date().toISOString(),
-        type: 'INGRESO',
-        quantityDelta: quantityToAdd,
-        previousStock,
-        newStock,
-        reason: 'Reposición rápida desde panel de alertas',
-        userName: currentUser?.name || 'Sistema',
-      },
-      ...prev,
-    ]);
+    setStockMovements((prev) => [movement, ...prev]);
 
-    // Automatically resolve / clear alert if above min stock
     if (newStock > prod.minStock) {
       setAlerts((prev) => prev.filter((a) => a.productId !== prod.id));
     } else {
-      // Update alert with new stock
       setAlerts((prev) =>
         prev.map((a) =>
           a.productId === prod.id
@@ -1386,7 +1782,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       );
     }
 
-    // Dismiss any active toast for this product
     setToasts((prev) => prev.filter((t) => t.productId !== productId));
 
     showToast(
@@ -1395,27 +1790,34 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
   };
 
-  const addProduct = (productData: Omit<Product, 'id'>) => {
-    const newProd: Product = {
-      ...productData,
-      id: `prod-${Date.now()}`,
-    };
-    setProducts((prev) => [newProd, ...prev]);
+  const addProduct = async (productData: Omit<Product, 'id'>) => {
+    try {
+      const created = await productService.create(productData);
+      setProducts((prev) => [created, ...prev]);
 
-    if (newProd.stock <= newProd.minStock) {
-      showStockAlertToast(newProd, newProd.stock);
+      if (created.stock <= created.minStock) {
+        showStockAlertToast(created, created.stock);
+      }
+
+      showToast(`Producto "${created.name}" creado con éxito`, 'success');
+    } catch (e) {
+      console.error('Error creating product in Supabase:', e);
+      showToast('Error al guardar el producto en la base de datos', 'error');
     }
-
-    showToast(`Producto "${newProd.name}" creado con éxito`, 'success');
   };
 
-  const updateProduct = (id: string, productData: Partial<Product>) => {
+  const updateProduct = async (id: string, productData: Partial<Product>) => {
+    try {
+      await productService.update(id, productData);
+    } catch (e) {
+      console.error('Error updating product in Supabase:', e);
+    }
+
     setProducts((prev) =>
       prev.map((p) => {
         if (p.id === id) {
           const updated = { ...p, ...productData };
           if (updated.stock <= updated.minStock) {
-            // Check if alert needs to be fired
             if (p.stock > p.minStock) {
               showStockAlertToast(updated, updated.stock);
             }
@@ -1430,7 +1832,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     showToast('Producto actualizado correctamente', 'success');
   };
 
-  const deleteProduct = (id: string): boolean => {
+  const deleteProduct = async (id: string): Promise<boolean> => {
     if (!currentUser) return false;
     if (currentUser.role !== 'DUEÑO' && !currentUser.canManageInventory) {
       showToast('No tienes permiso para eliminar productos', 'error');
@@ -1443,37 +1845,40 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return false;
     }
 
-    // 1. Remove from products
+    const delMovement: StockMovement = {
+      id: `stk-del-${Date.now()}`,
+      productId: id,
+      productName: prod.name,
+      timestamp: new Date().toISOString(),
+      type: 'AJUSTE_MERMA',
+      quantityDelta: -prod.stock,
+      previousStock: prod.stock,
+      newStock: 0,
+      reason: `Producto eliminado del catálogo por ${currentUser.name}`,
+      userName: currentUser.name,
+    };
+
+    try {
+      await Promise.all([
+        productService.delete(id),
+        stockMovementService.create(delMovement),
+      ]);
+    } catch (e) {
+      console.error('Error deleting product in Supabase:', e);
+    }
+
     setProducts((prev) => prev.filter((p) => p.id !== id));
-    // 2. Remove from cart if present
     setCart((prev) => prev.filter((item) => item.product.id !== id));
-    // 3. Remove from alerts and toasts
     setAlerts((prev) => prev.filter((a) => a.productId !== id));
     setToasts((prev) => prev.filter((t) => t.productId !== id));
-
-    // 4. Log stock movement deletion
-    setStockMovements((prev) => [
-      {
-        id: `stk-del-${Date.now()}`,
-        productId: id,
-        productName: prod.name,
-        timestamp: new Date().toISOString(),
-        type: 'AJUSTE_MERMA',
-        quantityDelta: -prod.stock,
-        previousStock: prod.stock,
-        newStock: 0,
-        reason: `Producto eliminado del catálogo por ${currentUser.name}`,
-        userName: currentUser.name,
-      },
-      ...prev,
-    ]);
+    setStockMovements((prev) => [delMovement, ...prev]);
 
     showToast(`Producto "${prod.name}" eliminado del inventario`, 'info');
     return true;
   };
 
   // Category management
-  const addCategory = (name: string): boolean => {
+  const addCategory = async (name: string): Promise<boolean> => {
     const trimmed = name.trim();
     if (!trimmed) {
       showToast('El nombre de la categoría no puede estar vacío', 'error');
@@ -1484,12 +1889,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return false;
     }
 
+    try {
+      await categoryService.create(trimmed);
+    } catch (e) {
+      console.error('Error creating category in Supabase:', e);
+    }
+
     setCategories((prev) => [...prev, trimmed]);
     showToast(`Categoría "${trimmed}" creada con éxito`, 'success');
     return true;
   };
 
-  const updateCategory = (oldName: string, newName: string): boolean => {
+  const updateCategory = async (oldName: string, newName: string): Promise<boolean> => {
     const trimmed = newName.trim();
     if (!trimmed) {
       showToast('El nombre de la categoría no puede estar vacío', 'error');
@@ -1500,15 +1911,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return false;
     }
 
-    // Update categories list
-    setCategories((prev) => prev.map((c) => (c === oldName ? trimmed : c)));
+    try {
+      await categoryService.update(oldName, trimmed);
+    } catch (e) {
+      console.error('Error updating category in Supabase:', e);
+    }
 
-    // Update all products in this category
+    setCategories((prev) => prev.map((c) => (c === oldName ? trimmed : c)));
     setProducts((prev) =>
       prev.map((p) => (p.category === oldName ? { ...p, category: trimmed } : p))
     );
-
-    // Update alerts with this category
     setAlerts((prev) =>
       prev.map((a) => (a.category === oldName ? { ...a, category: trimmed } : a))
     );
@@ -1517,20 +1929,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return true;
   };
 
-  const deleteCategory = (name: string, fallbackCategory: string = 'General'): boolean => {
+  const deleteCategory = async (name: string, fallbackCategory: string = 'General'): Promise<boolean> => {
     if (categories.length <= 1) {
       showToast('Debe existir al menos una categoría en el sistema', 'warning');
       return false;
     }
 
-    // Ensure fallback exists
+    try {
+      await categoryService.delete(name);
+    } catch (e) {
+      console.error('Error deleting category in Supabase:', e);
+    }
+
     if (!categories.includes(fallbackCategory) && fallbackCategory !== name) {
       setCategories((prev) => [...prev.filter((c) => c !== name), fallbackCategory]);
     } else {
       setCategories((prev) => prev.filter((c) => c !== name));
     }
 
-    // Reassign products to fallback
     const targetFallback = fallbackCategory === name ? (categories.find((c) => c !== name) || 'General') : fallbackCategory;
     setProducts((prev) =>
       prev.map((p) => (p.category === name ? { ...p, category: targetFallback } : p))
@@ -1540,59 +1956,114 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return true;
   };
 
-  const dismissAlert = (id: string) => {
+  // ==========================================
+  // ALERTS & NOTIFICATIONS
+  // ==========================================
+
+  const dismissAlert = async (id: string) => {
+    try {
+      await appAlertService.delete(id);
+    } catch (e) {
+      console.error('Error deleting alert in Supabase:', e);
+    }
     setAlerts((prev) => prev.filter((a) => a.id !== id));
   };
 
-  const markAlertAsRead = (id: string) => {
+  const markAlertAsRead = async (id: string) => {
+    try {
+      await appAlertService.markAsRead(id);
+    } catch (e) {
+      console.error('Error marking alert as read in Supabase:', e);
+    }
     setAlerts((prev) => prev.map((a) => (a.id === id ? { ...a, read: true } : a)));
   };
 
-  const markAllAlertsAsRead = () => {
+  const markAllAlertsAsRead = async () => {
+    try {
+      await appAlertService.markAllAsRead();
+    } catch (e) {
+      console.error('Error marking all alerts as read in Supabase:', e);
+    }
     setAlerts((prev) => prev.map((a) => ({ ...a, read: true })));
     showToast('Todas las alertas marcadas como leídas', 'info');
   };
 
-  const clearAllAlerts = () => {
+  const clearAllAlerts = async () => {
+    try {
+      await appAlertService.clearAll();
+    } catch (e) {
+      console.error('Error clearing alerts in Supabase:', e);
+    }
     setAlerts([]);
     showToast('Historial de alertas limpiado', 'info');
   };
 
-  // --- Gastos Fijos & Operativos Handlers ---
-  const addExpense = (expenseData: Omit<FixedExpense, 'id' | 'createdAt'>) => {
-    const newExpense: FixedExpense = {
-      ...expenseData,
-      id: `exp_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
-      createdAt: new Date().toISOString(),
-    };
-    setExpenses((prev) => [newExpense, ...prev]);
-    showToast(`Gasto "${newExpense.name}" agregado con éxito`, 'success');
+  // ==========================================
+  // GASTOS FIJOS & OPERATIVOS HANDLERS
+  // ==========================================
+
+  const addExpense = async (expenseData: Omit<FixedExpense, 'id' | 'createdAt'>) => {
+    try {
+      const created = await fixedExpenseService.create(expenseData);
+      setExpenses((prev) => [created, ...prev]);
+      showToast(`Gasto "${created.name}" agregado con éxito`, 'success');
+    } catch (e) {
+      console.error('Error adding expense in Supabase:', e);
+      showToast('Error al registrar gasto en la base de datos', 'error');
+    }
   };
 
-  const updateExpense = (id: string, updates: Partial<FixedExpense>) => {
+  const updateExpense = async (id: string, updates: Partial<FixedExpense>) => {
+    try {
+      await fixedExpenseService.update(id, updates);
+    } catch (e) {
+      console.error('Error updating expense in Supabase:', e);
+    }
     setExpenses((prev) =>
       prev.map((e) => (e.id === id ? { ...e, ...updates } : e))
     );
     showToast('Gasto actualizado correctamente', 'success');
   };
 
-  const deleteExpense = (id: string): boolean => {
+  const deleteExpense = async (id: string): Promise<boolean> => {
     const target = expenses.find((e) => e.id === id);
     if (!target) return false;
+
+    try {
+      await fixedExpenseService.delete(id);
+    } catch (e) {
+      console.error('Error deleting expense in Supabase:', e);
+    }
+
     setExpenses((prev) => prev.filter((e) => e.id !== id));
     showToast(`Gasto "${target.name}" eliminado`, 'info');
     return true;
   };
 
-  const markExpenseAsPaid = (id: string, paymentMethod: PaymentMethodType = 'TRANSFERENCIA_QR', amount?: number) => {
+  const markExpenseAsPaid = async (id: string, paymentMethod: PaymentMethodType = 'TRANSFERENCIA_QR', amount?: number) => {
+    const target = expenses.find((e) => e.id === id);
+    const paidAmount = amount ?? (target ? target.amount : 0);
+    const lastPaidDate = new Date().toISOString();
+
+    try {
+      await fixedExpenseService.update(id, {
+        status: 'PAGADO',
+        lastPaidDate,
+        lastPaidAmount: paidAmount,
+        lastPaidMethod: paymentMethod,
+      });
+    } catch (e) {
+      console.error('Error marking expense as paid in Supabase:', e);
+    }
+
     setExpenses((prev) =>
       prev.map((e) => {
         if (e.id === id) {
           return {
             ...e,
             status: 'PAGADO',
-            lastPaidDate: new Date().toISOString(),
-            lastPaidAmount: amount ?? e.amount,
+            lastPaidDate,
+            lastPaidAmount: paidAmount,
             lastPaidMethod: paymentMethod,
           };
         }
@@ -1602,20 +2073,38 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     showToast('Pago de gasto registrado exitosamente', 'success');
   };
 
-  const markExpenseAsPending = (id: string) => {
+  const markExpenseAsPending = async (id: string) => {
+    try {
+      await fixedExpenseService.update(id, { status: 'PENDIENTE' });
+    } catch (e) {
+      console.error('Error marking expense pending in Supabase:', e);
+    }
+
     setExpenses((prev) =>
       prev.map((e) => (e.id === id ? { ...e, status: 'PENDIENTE' } : e))
     );
     showToast('Gasto marcado como pendiente', 'info');
   };
 
-  // --- Store Info Handlers ---
-  const updateStoreInfo = (updates: Partial<StoreInfo>) => {
+  // ==========================================
+  // STORE INFO HANDLERS
+  // ==========================================
+
+  const updateStoreInfo = async (updates: Partial<StoreInfo>) => {
+    try {
+      await storeSettingsService.update(updates);
+    } catch (e) {
+      console.error('Error updating store settings in Supabase:', e);
+    }
+
     setStoreInfo((prev) => ({ ...prev, ...updates }));
     showToast('Información del comercio y sucursal actualizada', 'success');
   };
 
-  // --- Acceso Maestro de Soporte Técnico con Verificación Gmail ---
+  // ==========================================
+  // MASTER TECH SUPPORT AUTHENTICATION
+  // ==========================================
+
   const sendMasterVerificationCode = (email: string): { success: boolean; message: string; code?: string } => {
     const cleanEmail = email.trim().toLowerCase();
     if (!cleanEmail || !cleanEmail.includes('@')) {
@@ -1623,7 +2112,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return { success: false, message: 'Correo inválido' };
     }
 
-    // Generate secure 6-digit verification OTP
     const code = Math.floor(100000 + Math.random() * 900000).toString();
     const timestamp = Date.now();
 
@@ -1695,6 +2183,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const currentPass = masterAuth.password || 'FAROPROJECTjl2209';
 
     if (cleanPass === currentPass || cleanPass === 'FAROPROJECTjl2209') {
+      const masterUser: User = {
+        id: 'usr-master-superadmin',
+        name: 'Dueño del Sistema (Master)',
+        email: masterAuth.email || 'riojadecoraciones@gmail.com',
+        role: 'SUPERADMIN',
+        roleTitle: 'Desarrollador / Llave Maestra',
+        pin: '9999',
+        avatarUrl: '',
+        initials: 'MS',
+        canDiscount: true,
+        canRefund: true,
+        canManageInventory: true,
+      };
+
+      setCurrentUser(masterUser);
       setIsSupportMode(true);
       setMasterAuth((prev) => ({ ...prev, lastLoginAt: new Date().toISOString() }));
       try {
@@ -1702,16 +2205,69 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       } catch (e) {
         console.error(e);
       }
+      setIsLoginModalOpen(false);
       setIsMasterAuthModalOpen(false);
-      setIsSupportModalOpen(true);
-      showToast('🛠️ Acceso Maestro de Soporte Técnico Autorizado', 'success', {
-        title: 'Modo Soporte Activado',
+      setActiveViewRaw('master_portal');
+      showToast('🛠️ Acceso Maestro Total Autorizado — Bienvenido Dueño del Sistema', 'success', {
+        title: 'Llave Maestra Concedida',
       });
       return { success: true, message: 'Autenticación exitosa' };
     }
 
-    showToast('Contraseña Maestra de Soporte incorrecta', 'error');
+    showToast('Contraseña Maestra incorrecta', 'error');
     return { success: false, message: 'Contraseña inválida' };
+  };
+
+  const loginMasterSuperAdmin = loginMaster;
+
+  const createStoreTenant = async (tenantData: Omit<StoreTenant, 'id' | 'createdAt'>): Promise<StoreTenant> => {
+    const newTenant: StoreTenant = {
+      ...tenantData,
+      id: `tenant-${Date.now()}`,
+      createdAt: new Date().toISOString(),
+    };
+    setStoreTenants((prev) => [newTenant, ...prev]);
+    showToast(`Comercio "${newTenant.name}" creado con éxito`, 'success');
+    return newTenant;
+  };
+
+  const updateStoreTenant = async (id: string, updates: Partial<StoreTenant>): Promise<void> => {
+    setStoreTenants((prev) =>
+      prev.map((t) => (t.id === id ? { ...t, ...updates } : t))
+    );
+    showToast('Datos del comercio actualizados', 'info');
+  };
+
+  const deleteStoreTenant = async (id: string): Promise<void> => {
+    setStoreTenants((prev) => prev.filter((t) => t.id !== id));
+    showToast('Comercio eliminado', 'info');
+  };
+
+  const impersonateStore = (storeId: string) => {
+    const targetTenant = storeTenants.find((t) => t.id === storeId);
+    if (targetTenant) {
+      setIsImpersonating(true);
+      setStoreInfo({
+        storeName: targetTenant.name,
+        branchName: targetTenant.branchName,
+        brandSubtitle: 'Sucursal Auditada por Soporte Maestro',
+        cuit: targetTenant.cuit || '',
+        address: targetTenant.address || '',
+        phone: targetTenant.ownerPhone || '',
+        email: targetTenant.ownerEmail || '',
+        receiptFooter: 'Comprobante no válido como factura',
+      });
+      setActiveViewRaw('dashboard');
+      showToast(`Auditando sucursal: ${targetTenant.name}`, 'info', {
+        title: 'Modo Auditoría de Tienda',
+      });
+    }
+  };
+
+  const exitImpersonation = () => {
+    setIsImpersonating(false);
+    setActiveViewRaw('master_portal');
+    showToast('Regresando al Portal Maestro', 'info');
   };
 
   const resetMasterPassword = (
@@ -1819,7 +2375,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return JSON.stringify(backupData, null, 2);
   };
 
-  const importSystemBackup = (jsonContent: string): boolean => {
+  const importSystemBackup = async (jsonContent: string): Promise<boolean> => {
     try {
       const parsed = JSON.parse(jsonContent);
       if (parsed.products && Array.isArray(parsed.products)) setProducts(parsed.products);
@@ -1838,33 +2394,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const repairSystemDatabase = (): { fixedIssues: number; details: string[] } => {
+  const repairSystemDatabase = async (): Promise<{ fixedIssues: number; details: string[] }> => {
     const details: string[] = [];
     let fixedIssues = 0;
 
-    // 1. Sync categories
     const existingCats = new Set(categories);
     let catsAdded = 0;
-    products.forEach((p) => {
+    for (const p of products) {
       if (p.category && !existingCats.has(p.category)) {
         existingCats.add(p.category);
         catsAdded++;
+        try {
+          await categoryService.create(p.category);
+        } catch (e) {
+          console.warn('Could not insert repaired category:', e);
+        }
       }
-    });
+    }
     if (catsAdded > 0) {
       setCategories(Array.from(existingCats));
       details.push(`Se sincronizaron ${catsAdded} categorías presentes en productos.`);
       fixedIssues += catsAdded;
     }
 
-    // 2. Clean corrupted cart
     if (cart.some((c) => !c.product || typeof c.quantity !== 'number' || c.quantity <= 0)) {
       setCart((prev) => prev.filter((c) => c.product && c.quantity > 0));
       details.push('Se eliminaron ítems corruptos del carrito.');
       fixedIssues++;
     }
 
-    // 3. Normalize expenses
     setExpenses((prev) =>
       prev.map((e) => {
         if (!e.status) {
@@ -1901,6 +2459,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   return (
     <AppContext.Provider
       value={{
+        isLoadingData,
+        isSupabaseConnected,
+
         currentUser,
         users,
         isLoginModalOpen,
@@ -1979,6 +2540,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         sendMasterVerificationCode,
         registerMasterAccount,
         loginMaster,
+        loginMasterSuperAdmin,
         resetMasterPassword,
         updateMasterCredentials,
         isSupportMode,
@@ -1989,6 +2551,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         exportSystemBackup,
         importSystemBackup,
         repairSystemDatabase,
+
+        storeTenants,
+        createStoreTenant,
+        updateStoreTenant,
+        deleteStoreTenant,
+        impersonateStore,
+        exitImpersonation,
+        isImpersonating,
 
         alerts,
         unreadAlertsCount,
@@ -2018,4 +2588,3 @@ export const useApp = () => {
   }
   return context;
 };
-

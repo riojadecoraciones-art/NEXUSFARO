@@ -1,17 +1,18 @@
-export type UserRole = 'DUEÑO' | 'CAJERO';
+export type UserRole = 'SUPERADMIN' | 'DUEÑO' | 'CAJERO';
 
 export interface User {
   id: string;
   name: string;
   email?: string;
   role: UserRole;
-  roleTitle: string; // e.g. 'Store Manager', 'Cashier', 'Supervisor'
+  roleTitle: string; // e.g. 'Dueño de la App', 'Dueño de Negocio', 'Cajero'
   pin: string; // 4-digit PIN
   avatarUrl: string;
   initials: string;
   canDiscount: boolean;
   canRefund: boolean;
   canManageInventory: boolean;
+  storeId?: string; // Optional reference to specific store tenant
 }
 
 export type ProductCategory = string;
@@ -222,6 +223,23 @@ export interface MasterAuthConfig {
   lastLoginAt?: string;
 }
 
+export interface StoreTenant {
+  id: string;
+  name: string;
+  branchName: string;
+  ownerName: string;
+  ownerEmail?: string;
+  ownerPhone?: string;
+  cuit?: string;
+  address?: string;
+  status: 'ACTIVO' | 'SUSPENDIDO' | 'EN_PRUEBA';
+  createdAt: string;
+  totalSales?: number;
+  totalRevenue?: number;
+  totalProducts?: number;
+  activeEmployeesCount?: number;
+}
+
 export type ActiveView = 
   | 'dashboard' 
   | 'pos' 
@@ -231,4 +249,6 @@ export type ActiveView =
   | 'employees' 
   | 'expenses'
   | 'settings'
-  | 'cash_register';
+  | 'cash_register'
+  | 'master_portal';
+
