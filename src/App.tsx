@@ -8,6 +8,7 @@ import { AppProvider, useApp } from './context/AppContext';
 import { Toast } from './components/Toast';
 import { NotificationDrawer } from './components/NotificationDrawer';
 import { LoginScreen } from './components/LoginScreen';
+import { TerminalAuthScreen } from './components/TerminalAuthScreen';
 import { Sidebar } from './components/Sidebar';
 import { Navbar } from './components/Navbar';
 import { POSView } from './components/POSView';
@@ -34,8 +35,33 @@ const MainLayout: React.FC = () => {
     isSupportMode,
     setIsSupportModalOpen,
     storeInfo,
+    hasTerminalSession,
+    isCheckingTerminalSession,
   } = useApp();
   const [isCashModalOpen, setIsCashModalOpen] = useState<boolean>(false);
+
+  // Mientras se resuelve si esta terminal ya tiene sesión, no mostramos ninguna
+  // pantalla de acceso: evita el parpadeo del formulario en cada recarga.
+  if (isCheckingTerminalSession) {
+    return (
+      <div className="fixed inset-0 flex items-center justify-center bg-slate-950 text-slate-300">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 border-2 border-slate-600 border-t-blue-500 rounded-full animate-spin" />
+          <span className="text-xs font-semibold tracking-wide">Conectando terminal…</span>
+        </div>
+      </div>
+    );
+  }
+
+  // Sin sesión de Supabase la base no devuelve nada: primero se activa el equipo.
+  if (!hasTerminalSession) {
+    return (
+      <>
+        <TerminalAuthScreen />
+        <Toast />
+      </>
+    );
+  }
 
   if (!currentUser) {
     return (

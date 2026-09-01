@@ -42,6 +42,15 @@ interface AppContextType {
   isLoadingData: boolean;
   isSupabaseConnected: boolean;
 
+  // Sesión de la terminal (Supabase Auth).
+  // Sin ella la base no devuelve datos: las policies de RLS exigen el rol
+  // `authenticated`, así que la anon key por sí sola no alcanza.
+  hasTerminalSession: boolean;
+  isCheckingTerminalSession: boolean;
+  terminalEmail: string | null;
+  signInTerminal: (email: string, password: string) => Promise<{ success: boolean; message: string }>;
+  signOutTerminal: () => Promise<void>;
+
   // Auth & Roles
   currentUser: User | null;
   users: User[];
@@ -200,6 +209,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // 0. Global Loading & Supabase Connection States
   const [isLoadingData, setIsLoadingData] = useState<boolean>(true);
   const [isSupabaseConnected, setIsSupabaseConnected] = useState<boolean>(true);
+
+  // 0.b Sesión de la terminal
+  const [hasTerminalSession, setHasTerminalSession] = useState<boolean>(false);
+  const [isCheckingTerminalSession, setIsCheckingTerminalSession] = useState<boolean>(true);
+  const [terminalEmail, setTerminalEmail] = useState<string | null>(null);
 
   // 1. Auth & Navigation
   const [users, setUsers] = useState<User[]>(SEED_USERS);
@@ -524,15 +538,84 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [showToast]);
 
+  // ==========================================
+  // SESIÓN DE LA TERMINAL (SUPABASE AUTH)
+  // ==========================================
+
   useEffect(() => {
+    let activo = true;
+
+    supabase.auth
+      .getSession()
+      .then(({ data }) => {
+        if (!activo) return;
+        setHasTerminalSession(Boolean(data.session));
+        setTerminalEmail(data.session?.user?.email ?? null);
+      })
+      .catch((e) => {
+        console.error('No se pudo leer la sesión de la terminal:', e);
+      })
+      .finally(() => {
+        if (activo) setIsCheckingTerminalSession(false);
+      });
+
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      setHasTerminalSession(Boolean(session));
+      setTerminalEmail(session?.user?.email ?? null);
+    });
+
+    return () => {
+      activo = false;
+      listener.subscription.unsubscribe();
+    };
+  }, []);
+
+  const signInTerminal = useCallback(
+    async (email: string, password: string): Promise<{ success: boolean; message: string }> => {
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+
+      if (error) {
+        console.warn('Fallo el acceso de terminal:', error.message);
+        const esCredencial = /invalid login credentials/i.test(error.message);
+        return {
+          success: false,
+          message: esCredencial
+            ? 'Correo o contraseña incorrectos.'
+            : `No se pudo conectar: ${error.message}`,
+        };
+      }
+
+      setHasTerminalSession(Boolean(data.session));
+      setTerminalEmail(data.session?.user?.email ?? null);
+      return { success: true, message: 'Terminal activada' };
+    },
+    []
+  );
+
+  const signOutTerminal = useCallback(async () => {
+    await supabase.auth.signOut();
+    setHasTerminalSession(false);
+    setTerminalEmail(null);
+    setCurrentUser(null);
+    setIsLoginModalOpen(true);
+  }, []);
+
+  // Los datos se piden recién cuando hay sesión: sin ella el RLS los rechaza.
+  useEffect(() => {
+    if (!hasTerminalSession) {
+      setIsLoadingData(false);
+      return;
+    }
     loadAllDataFromSupabase();
-  }, [loadAllDataFromSupabase]);
+  }, [hasTerminalSession, loadAllDataFromSupabase]);
 
   // ==========================================
   // REALTIME SUBSCRIPTIONS
   // ==========================================
 
   useEffect(() => {
+    if (!hasTerminalSession) return;
+
     const channel = supabase
       .channel('nexus-db-realtime')
       .on(
@@ -604,7 +687,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [hasTerminalSession]);
 
   // Unread alerts count
   const unreadAlertsCount = useMemo(() => {
@@ -2453,6 +2536,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       value={{
         isLoadingData,
         isSupabaseConnected,
+        hasTerminalSession,
+        isCheckingTerminalSession,
+        terminalEmail,
+        signInTerminal,
+        signOutTerminal,
 
         currentUser,
         users,

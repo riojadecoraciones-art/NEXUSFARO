@@ -34,6 +34,8 @@ export const SettingsView: React.FC = () => {
     updateStoreInfo,
     setIsSupportModalOpen,
     setActiveView,
+    terminalEmail,
+    signOutTerminal,
   } = useApp();
 
   const isOwner = currentUser?.role === 'DUEÑO';
@@ -311,6 +313,39 @@ export const SettingsView: React.FC = () => {
               Ir a Gastos Fijos
             </button>
           </div>
+
+          {/* Conexión de la terminal con el negocio */}
+          {isOwner && (
+            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+              <div className="flex items-center gap-2.5 pb-2 border-b border-slate-100">
+                <ShieldCheck className="w-5 h-5 text-emerald-600" />
+                <h3 className="font-extrabold text-base text-slate-900">Conexión de la Terminal</h3>
+              </div>
+
+              <div className="text-xs text-slate-600 leading-relaxed">
+                Esta terminal está conectada al negocio como{' '}
+                <strong className="text-slate-900 font-mono">{terminalEmail || 'cuenta desconocida'}</strong>.
+                La sesión se renueva sola; no hay que reingresarla cada día.
+              </div>
+
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-[11px] text-amber-900 leading-relaxed">
+                Al desconectarla, este equipo deja de ver los datos del negocio hasta
+                que alguien vuelva a ingresar las credenciales de terminal. Usalo si
+                vendés o das de baja la computadora.
+              </div>
+
+              <button
+                type="button"
+                onClick={async () => {
+                  if (!window.confirm('¿Desconectar esta terminal del negocio?')) return;
+                  await signOutTerminal();
+                }}
+                className="w-full py-2.5 px-4 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold rounded-xl text-xs transition-colors"
+              >
+                Desconectar esta terminal
+              </button>
+            </div>
+          )}
 
           {/* Hardware & Peripherals */}
           <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
