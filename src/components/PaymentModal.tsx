@@ -79,7 +79,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, onS
     return Array.from(new Set(suggestions)).sort((a, b) => a - b).slice(0, 5);
   };
 
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
     setIsSubmitting(true);
 
     let breakdown: PaymentDetail[] = [];
@@ -106,7 +106,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, onS
       if (parseFloat(splitQR) > 0) breakdown.push({ method: 'TRANSFERENCIA_QR', amount: parseFloat(splitQR) });
     }
 
-    const sale = confirmSale({
+    const sale = await confirmSale({
       method,
       breakdown,
       amountReceived: method === 'EFECTIVO' ? cashNum : undefined,

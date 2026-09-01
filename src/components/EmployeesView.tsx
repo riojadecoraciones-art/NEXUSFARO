@@ -120,6 +120,7 @@ export const EmployeesView: React.FC = () => {
         role,
         roleTitle,
         pin,
+        avatarUrl: '',
         canDiscount,
         canRefund,
         canManageInventory: role === 'DUEÑO' ? true : canManageInventory,

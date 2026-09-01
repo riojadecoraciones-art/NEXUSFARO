@@ -109,6 +109,7 @@ export const SettingsView: React.FC = () => {
       role: newUserRole,
       roleTitle: newUserRole === 'DUEÑO' ? 'Dueño / Administrador' : 'Cajero',
       pin: newUserPin,
+      avatarUrl: '',
       canDiscount: newUserRole === 'DUEÑO' ? true : newUserDiscount,
       canRefund: newUserRole === 'DUEÑO' ? true : newUserRefund,
       canManageInventory: newUserRole === 'DUEÑO',

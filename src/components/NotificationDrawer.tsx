@@ -7,6 +7,7 @@ import {
   Bell,
   AlertTriangle,
   AlertOctagon,
+  AlertCircle,
   CheckCircle2,
   Package,
   ArrowRight,
@@ -264,7 +265,7 @@ export const NotificationDrawer: React.FC = () => {
                     : 'bg-white border-blue-300 shadow-sm ring-1 ring-blue-100';
                   badgeStyle = 'bg-blue-100 text-blue-800 border-blue-200';
                   iconWrapperStyle = 'bg-blue-50 text-blue-600 border-blue-200';
-                  IconComponent = AlertCircleIcon;
+                  IconComponent = AlertCircle;
                 }
 
                 const currentStock = alert.currentStock ?? 0;
@@ -484,23 +485,3 @@ export const NotificationDrawer: React.FC = () => {
   );
 };
 
-function AlertCircleIcon(props: React.SVGProps<SVGSVGElement>) {
-  return (
-    <svg
-      {...props}
-      xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <circle cx="12" cy="12" r="10" />
-      <line x1="12" x2="12" y1="8" y2="12" />
-      <line x1="12" x2="12.01" y1="16" y2="16" />
-    </svg>
-  );
-}
