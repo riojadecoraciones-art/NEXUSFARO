@@ -37,8 +37,8 @@ export const MasterAuthModal: React.FC = () => {
     if (!password) return;
 
     setIsSubmitting(true);
-    setTimeout(() => {
-      loginMaster(password);
+    setTimeout(async () => {
+      await loginMaster(password);
       setIsSubmitting(false);
     }, 150);
   };

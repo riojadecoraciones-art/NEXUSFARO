@@ -1,7 +1,15 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://wbvlszyxammnccepkkzw.supabase.co';
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Indidmxzenl4YW1tbmNjZXBra3p3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODcwNTg3MDgsImV4cCI6MjEwMjYzNDcwOH0.MdXeGOr01N_VfLolttQ30962QvIoxtkg-jHgAPFJl10';
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+if (!supabaseUrl || !supabaseAnonKey) {
+  throw new Error(
+    'Faltan las credenciales de Supabase. Copiá .env.example a .env.local y completá ' +
+      'VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY con los datos de tu proyecto ' +
+      '(Supabase → Project Settings → API).'
+  );
+}
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {

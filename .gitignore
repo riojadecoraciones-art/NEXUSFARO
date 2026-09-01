@@ -1,3 +1,7 @@
 node_modules
 dist
-.env*
+
+# Variables de entorno: nunca subir secretos al repositorio.
+.env
+.env.*
+!.env.example

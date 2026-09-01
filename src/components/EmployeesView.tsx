@@ -15,8 +15,6 @@ import {
   RotateCcw,
   Check,
   LogIn,
-  Eye,
-  EyeOff,
   Mail,
   KeyRound,
   ShieldAlert,
@@ -29,7 +27,7 @@ export const EmployeesView: React.FC = () => {
     users,
     currentUser,
     showToast,
-    switchUserDirect,
+    requestUserSwitch,
     addUser,
     updateUser,
     deleteUser,
@@ -42,7 +40,6 @@ export const EmployeesView: React.FC = () => {
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [pinChangeUser, setPinChangeUser] = useState<User | null>(null);
   const [quickNewPin, setQuickNewPin] = useState<string>('');
-  const [visiblePins, setVisiblePins] = useState<Record<string, boolean>>({});
 
   // Form states
   const [name, setName] = useState<string>('');
@@ -53,14 +50,6 @@ export const EmployeesView: React.FC = () => {
   const [canDiscount, setCanDiscount] = useState<boolean>(false);
   const [canRefund, setCanRefund] = useState<boolean>(false);
   const [canManageInventory, setCanManageInventory] = useState<boolean>(false);
-
-  const togglePinVisibility = (userId: string) => {
-    if (!isOwner) return;
-    setVisiblePins((prev) => ({
-      ...prev,
-      [userId]: !prev[userId],
-    }));
-  };
 
   const handleOpenAdd = () => {
     setEditingUser(null);
@@ -193,7 +182,6 @@ export const EmployeesView: React.FC = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {users.map((user) => {
           const isCurrentUser = currentUser?.id === user.id;
-          const isPinVisible = !!visiblePins[user.id];
 
           return (
             <div
@@ -301,28 +289,17 @@ export const EmployeesView: React.FC = () => {
 
               {/* PIN Code & Action Buttons */}
               <div className="mt-5 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
-                {/* Protected PIN with Owner Reveal toggle */}
+                {/*
+                  El PIN se guarda hasheado y no se puede mostrar: antes había un
+                  botón de "revelar PIN" que exponía la clave de cada empleado en
+                  pantalla. Para dar acceso a alguien, se le asigna un PIN nuevo.
+                */}
                 <div className="flex items-center gap-2">
                   <Key className="w-3.5 h-3.5 text-slate-400" />
                   <span className="text-slate-500 font-medium">PIN:</span>
                   <div className="flex items-center gap-1 bg-slate-100 px-2 py-0.5 rounded-lg border border-slate-200">
-                    <code className="font-mono font-black text-slate-900 tracking-wider">
-                      {isPinVisible ? user.pin : '••••'}
-                    </code>
-                    {isOwner && (
-                      <button
-                        type="button"
-                        onClick={() => togglePinVisibility(user.id)}
-                        className="text-slate-400 hover:text-slate-700 ml-1 p-0.5 rounded"
-                        title={isPinVisible ? 'Ocultar PIN' : 'Revelar PIN (solo Dueño)'}
-                      >
-                        {isPinVisible ? (
-                          <EyeOff className="w-3.5 h-3.5" />
-                        ) : (
-                          <Eye className="w-3.5 h-3.5" />
-                        )}
-                      </button>
-                    )}
+                    <code className="font-mono font-black text-slate-900 tracking-wider">••••</code>
+                    <Lock className="w-3 h-3 text-slate-400 ml-1" />
                   </div>
                 </div>
 
@@ -340,7 +317,7 @@ export const EmployeesView: React.FC = () => {
 
                   {!isCurrentUser && (
                     <button
-                      onClick={() => switchUserDirect(user.id)}
+                      onClick={() => requestUserSwitch(user.id)}
                       className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold rounded-lg transition-colors flex items-center gap-1 text-[11px]"
                       title={`Cambiar a la sesión de ${user.name}`}
                     >

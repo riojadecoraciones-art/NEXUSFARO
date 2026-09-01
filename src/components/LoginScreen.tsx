@@ -33,13 +33,18 @@ export const LoginScreen: React.FC = () => {
     storeInfo,
     setIsSupportModalOpen,
     isSupportMode,
+    pendingSwitchUserId,
+    clearPendingSwitch,
+    isMasterAccessConfigured,
   } = useApp();
 
   // Login Mode: 'PIN' (Employees / Store Owner) vs 'MASTER' (System Owner / Superadmin)
   const [loginMode, setLoginMode] = useState<'PIN' | 'MASTER'>('PIN');
 
   // PIN Mode states
-  const [selectedUserId, setSelectedUserId] = useState<string>(() => users[0]?.id || 'usr-1');
+  const [selectedUserId, setSelectedUserId] = useState<string>(
+    () => pendingSwitchUserId || users[0]?.id || 'usr-1'
+  );
   const [pin, setPin] = useState<string>('');
   const [errorAnimation, setErrorAnimation] = useState<boolean>(false);
   const [isForgotPinOpen, setIsForgotPinOpen] = useState<boolean>(false);
@@ -50,13 +55,23 @@ export const LoginScreen: React.FC = () => {
   const [masterError, setMasterError] = useState<string | null>(null);
   const [isMasterLoading, setIsMasterLoading] = useState<boolean>(false);
 
+  // Si otra pantalla pidió cambiar de usuario, precargamos ese usuario en el teclado.
+  useEffect(() => {
+    if (pendingSwitchUserId) {
+      setSelectedUserId(pendingSwitchUserId);
+      setLoginMode('PIN');
+      setPin('');
+      clearPendingSwitch();
+    }
+  }, [pendingSwitchUserId, clearPendingSwitch]);
+
   const selectedUser = users.find((u) => u.id === selectedUserId) || users[0] || {
     id: 'usr-1',
     name: 'Dueño / Administrador',
-    email: 'riojadecoraciones@gmail.com',
-    role: 'DUEÑO',
+    email: '',
+    role: 'DUEÑO' as const,
     roleTitle: 'Administrador General',
-    pin: '1234',
+    pin: '',
     avatarUrl: '',
     initials: 'RD',
     canDiscount: true,
@@ -74,8 +89,8 @@ export const LoginScreen: React.FC = () => {
         setPin(newPin);
 
         if (newPin.length === 4) {
-          setTimeout(() => {
-            const success = login(selectedUser.id, newPin);
+          setTimeout(async () => {
+            const success = await login(selectedUser.id, newPin);
             if (!success) {
               sounds.playErrorBeep();
               setErrorAnimation(true);
@@ -144,15 +159,15 @@ export const LoginScreen: React.FC = () => {
     }
 
     setIsMasterLoading(true);
-    setTimeout(() => {
-      const res = loginMaster(masterPassword);
+    setTimeout(async () => {
+      const res = await loginMaster(masterPassword);
       setIsMasterLoading(false);
       if (res.success) {
         sounds.playSaleSuccessSound();
         setMasterPassword('');
       } else {
         sounds.playErrorBeep();
-        setMasterError('Contraseña maestra incorrecta');
+        setMasterError(res.message);
       }
     }, 200);
   };
@@ -469,7 +484,7 @@ export const LoginScreen: React.FC = () => {
                       type={showMasterPass ? 'text' : 'password'}
                       value={masterPassword}
                       onChange={(e) => setMasterPassword(e.target.value)}
-                      placeholder="FAROPROJECTjl2209"
+                      placeholder="Contraseña maestra del sistema"
                       autoFocus
                       className="w-full pl-4 pr-11 py-3 bg-slate-50 border border-slate-300 rounded-2xl text-sm font-semibold text-slate-900 focus:bg-white focus:border-amber-500 focus:ring-4 focus:ring-amber-500/15 outline-none transition-all"
                     />
@@ -483,6 +498,18 @@ export const LoginScreen: React.FC = () => {
                   </div>
                 </div>
 
+                {!isMasterAccessConfigured && (
+                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs font-semibold text-amber-800 flex items-start gap-2">
+                    <ShieldAlert className="w-4 h-4 shrink-0 text-amber-600 mt-0.5" />
+                    <span>
+                      El acceso maestro no está configurado. Generá el hash con{' '}
+                      <code className="font-mono font-bold">npm run hash-password</code> y cargá{' '}
+                      <code className="font-mono font-bold">VITE_MASTER_PASSWORD_HASH</code> en{' '}
+                      <code className="font-mono font-bold">.env.local</code>.
+                    </span>
+                  </div>
+                )}
+
                 {masterError && (
                   <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs font-bold text-rose-700 flex items-center gap-2">
                     <ShieldAlert className="w-4 h-4 shrink-0 text-rose-600" />
@@ -492,7 +519,7 @@ export const LoginScreen: React.FC = () => {
 
                 <button
                   type="submit"
-                  disabled={isMasterLoading}
+                  disabled={isMasterLoading || !isMasterAccessConfigured}
                   className="w-full py-3.5 px-4 bg-amber-500 hover:bg-amber-600 text-white font-black rounded-2xl text-sm transition-all shadow-md shadow-amber-500/20 active:scale-[0.99] flex items-center justify-center gap-2 disabled:opacity-50"
                 >
                   {isMasterLoading ? (

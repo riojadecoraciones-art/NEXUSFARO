@@ -21,6 +21,7 @@ import {
 } from '../types';
 import { SEED_USERS, SEED_PRODUCTS, SEED_SALES, SEED_ALERTS, SEED_TENANTS } from '../mockData';
 import { sounds } from '../utils/soundEffects';
+import { hashSecret, isHashed, verifySecret } from '../utils/crypto';
 import { supabase } from '../lib/supabase';
 import {
   userService,
@@ -46,16 +47,25 @@ interface AppContextType {
   users: User[];
   isLoginModalOpen: boolean;
   setIsLoginModalOpen: (open: boolean) => void;
-  login: (userId: string, pin: string) => boolean;
+  login: (userId: string, pin: string) => Promise<boolean>;
   logout: () => void;
-  switchUser: (userId: string, pin: string) => boolean;
-  switchUserDirect: (userId: string) => boolean;
+  switchUser: (userId: string, pin: string) => Promise<boolean>;
+  /** Abre la pantalla de PIN con ese usuario preseleccionado. Nunca cambia la sesión sin PIN. */
+  requestUserSwitch: (userId: string) => void;
+  pendingSwitchUserId: string | null;
+  clearPendingSwitch: () => void;
   addUser: (userData: Omit<User, 'id' | 'initials'>) => Promise<void>;
   updateUser: (id: string, userData: Partial<User>) => Promise<void>;
   deleteUser: (id: string) => Promise<boolean>;
   updateUserPin: (userId: string, newPin: string) => Promise<boolean>;
-  requestPinRecovery: (email: string) => { success: boolean; user?: User; message: string; recoveryCode?: string };
-  resetPinWithCode: (email: string, code: string, newPin: string) => Promise<{ success: boolean; message: string }>;
+  requestPinRecovery: (email: string) => { success: boolean; user?: User; message: string };
+  /** Restablece el PIN autorizando con la contraseña maestra (no con un código por email). */
+  resetPinWithMasterPassword: (
+    email: string,
+    masterPassword: string,
+    newPin: string
+  ) => Promise<{ success: boolean; message: string }>;
+  isMasterAccessConfigured: boolean;
   activeView: ActiveView;
   setActiveView: (view: ActiveView) => void;
   canAccessView: (view: ActiveView) => boolean;
@@ -129,15 +139,12 @@ interface AppContextType {
   masterAuth: MasterAuthConfig;
   isMasterAuthModalOpen: boolean;
   setIsMasterAuthModalOpen: (open: boolean) => void;
-  sendMasterVerificationCode: (email: string) => { success: boolean; message: string; code?: string };
-  registerMasterAccount: (email: string, password: string, code: string) => { success: boolean; message: string };
-  loginMaster: (password: string) => { success: boolean; message: string };
-  resetMasterPassword: (email: string, code: string, newPassword: string) => { success: boolean; message: string };
-  updateMasterCredentials: (newEmail: string, newPassword?: string) => { success: boolean; message: string };
+  loginMaster: (password: string) => Promise<{ success: boolean; message: string }>;
+  updateMasterEmail: (newEmail: string) => { success: boolean; message: string };
   isSupportMode: boolean;
   isSupportModalOpen: boolean;
   setIsSupportModalOpen: (open: boolean) => void;
-  activateSupportMode: (pin: string) => boolean;
+  activateSupportMode: (password: string) => Promise<boolean>;
   deactivateSupportMode: () => void;
   exportSystemBackup: () => string;
   importSystemBackup: (jsonContent: string) => Promise<boolean>;
@@ -148,7 +155,7 @@ interface AppContextType {
   createStoreTenant: (tenant: Omit<StoreTenant, 'id' | 'createdAt'>) => Promise<StoreTenant>;
   updateStoreTenant: (id: string, updates: Partial<StoreTenant>) => Promise<void>;
   deleteStoreTenant: (id: string) => Promise<void>;
-  loginMasterSuperAdmin: (password: string) => { success: boolean; message: string };
+  loginMasterSuperAdmin: (password: string) => Promise<{ success: boolean; message: string }>;
   impersonateStore: (storeId: string) => void;
   exitImpersonation: () => void;
   isImpersonating: boolean;
@@ -177,6 +184,18 @@ interface AppContextType {
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
+/**
+ * Hash PBKDF2 de la contraseña maestra, inyectado en tiempo de build.
+ * Se genera con `npm run hash-password` y se guarda en .env.local.
+ * Si no está configurado, el acceso maestro queda deshabilitado: no existe
+ * ninguna contraseña por defecto ni código de emergencia en el código fuente.
+ */
+const MASTER_PASSWORD_HASH = import.meta.env.VITE_MASTER_PASSWORD_HASH?.trim() || '';
+const IS_MASTER_ACCESS_CONFIGURED = isHashed(MASTER_PASSWORD_HASH);
+
+const MASTER_NOT_CONFIGURED_MESSAGE =
+  'El acceso maestro no está configurado en esta instalación. Generá el hash con "npm run hash-password" y cargá VITE_MASTER_PASSWORD_HASH en .env.local.';
+
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // 0. Global Loading & Supabase Connection States
   const [isLoadingData, setIsLoadingData] = useState<boolean>(true);
@@ -186,6 +205,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [users, setUsers] = useState<User[]>(SEED_USERS);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState<boolean>(true);
+  // Usuario preseleccionado en la pantalla de PIN al pedir un cambio de sesión.
+  const [pendingSwitchUserId, setPendingSwitchUserId] = useState<string | null>(null);
   const [activeView, setActiveViewRaw] = useState<ActiveView>('pos');
   const [storeTenants, setStoreTenants] = useState<StoreTenant[]>(SEED_TENANTS);
   const [isImpersonating, setIsImpersonating] = useState<boolean>(false);
@@ -250,34 +271,47 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   });
 
   // 8. Acceso Maestro de Soporte Técnico
+  // Metadatos del acceso maestro. La contraseña NO se guarda acá: vive
+  // únicamente como hash en la variable de entorno VITE_MASTER_PASSWORD_HASH.
   const [masterAuth, setMasterAuth] = useState<MasterAuthConfig>(() => {
+    // Limpieza de instalaciones previas que guardaban la contraseña en claro.
     try {
-      const saved = localStorage.getItem('rioja_master_auth_v2');
+      localStorage.removeItem('rioja_master_auth_v2');
+    } catch (e) {
+      console.error(e);
+    }
+
+    let email = '';
+    let lastLoginAt: string | undefined;
+    try {
+      const saved = localStorage.getItem('nexus_master_meta_v3');
       if (saved) {
         const parsed = JSON.parse(saved);
-        return {
-          ...parsed,
-          password: parsed.password || 'FAROPROJECTjl2209',
-          isRegistered: true,
-        };
+        email = typeof parsed.email === 'string' ? parsed.email : '';
+        lastLoginAt = typeof parsed.lastLoginAt === 'string' ? parsed.lastLoginAt : undefined;
       }
     } catch (e) {
       console.error(e);
     }
+
     return {
-      email: 'riojadecoraciones@gmail.com',
-      isRegistered: true,
-      password: 'FAROPROJECTjl2209',
+      email,
+      isRegistered: IS_MASTER_ACCESS_CONFIGURED,
+      lastLoginAt,
     };
   });
 
   useEffect(() => {
     try {
-      localStorage.setItem('rioja_master_auth_v2', JSON.stringify(masterAuth));
+      // Solo metadatos no sensibles: nunca la contraseña ni códigos de verificación.
+      localStorage.setItem(
+        'nexus_master_meta_v3',
+        JSON.stringify({ email: masterAuth.email, lastLoginAt: masterAuth.lastLoginAt })
+      );
     } catch (e) {
       console.error(e);
     }
-  }, [masterAuth]);
+  }, [masterAuth.email, masterAuth.lastLoginAt]);
 
   const [isSupportMode, setIsSupportMode] = useState<boolean>(() => {
     try {
@@ -384,10 +418,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (fetchedUsers && fetchedUsers.length > 0) {
         setUsers(fetchedUsers);
       } else {
-        // Seed default owner user in Supabase if table is empty
+        // Primer arranque con la tabla vacía: se crea el usuario Dueño.
+        // El PIN sale de VITE_SEED_OWNER_PIN o, si no está definido, se genera
+        // uno al azar y se muestra una sola vez. Antes había un '1234' fijo
+        // escrito en el repositorio, que es una credencial por defecto pública.
         try {
-          const defaultUser = await userService.create(SEED_USERS[0]);
+          const envPin = import.meta.env.VITE_SEED_OWNER_PIN?.trim();
+          const seedPin =
+            envPin && /^\d{4}$/.test(envPin)
+              ? envPin
+              : String(globalThis.crypto.getRandomValues(new Uint32Array(1))[0] % 10000).padStart(4, '0');
+
+          const defaultUser = await userService.create({
+            ...SEED_USERS[0],
+            pin: await hashSecret(seedPin),
+          });
           setUsers([defaultUser]);
+
+          showToast(
+            `Se creó el usuario Dueño. PIN inicial: ${seedPin} — anotalo y cambialo desde Empleados.`,
+            'warning',
+            { title: 'Primer arranque', isPersistent: true }
+          );
         } catch (e) {
           console.warn('Could not seed default user in Supabase', e);
         }
@@ -589,13 +641,37 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // AUTH FUNCTIONS
   // ==========================================
 
-  const login = (userId: string, pin: string): boolean => {
+  /**
+   * Verifica el PIN de un usuario contra el hash almacenado.
+   *
+   * Migración transparente: si la fila todavía guarda el PIN en texto plano
+   * (instalaciones anteriores a esta versión), lo compara una única vez y
+   * lo reemplaza por su hash en la base. Nadie tiene que reingresar su PIN.
+   */
+  const verifyUserPin = async (targetUser: User, pin: string): Promise<boolean> => {
+    if (isHashed(targetUser.pin)) {
+      return verifySecret(pin, targetUser.pin);
+    }
+
+    if (targetUser.pin !== pin) return false;
+
+    try {
+      const hashed = await hashSecret(pin);
+      await userService.updatePin(targetUser.id, hashed);
+      setUsers((prev) => prev.map((u) => (u.id === targetUser.id ? { ...u, pin: hashed } : u)));
+    } catch (e) {
+      console.error('No se pudo migrar el PIN a formato hash:', e);
+    }
+    return true;
+  };
+
+  const login = async (userId: string, pin: string): Promise<boolean> => {
     const targetUser = users.find((u) => u.id === userId);
     if (!targetUser) {
       showToast('Usuario no encontrado', 'error');
       return false;
     }
-    if (targetUser.pin !== pin) {
+    if (!(await verifyUserPin(targetUser, pin))) {
       showToast('PIN incorrecto', 'error');
       return false;
     }
@@ -627,13 +703,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     showToast('Sesión cerrada correctamente', 'info');
   };
 
-  const switchUser = (userId: string, pin: string): boolean => {
+  const switchUser = async (userId: string, pin: string): Promise<boolean> => {
     const targetUser = users.find((u) => u.id === userId);
     if (!targetUser) {
       showToast('Usuario no encontrado', 'error');
       return false;
     }
-    if (targetUser.pin !== pin) {
+    if (!(await verifyUserPin(targetUser, pin))) {
       showToast('PIN incorrecto', 'error');
       return false;
     }
@@ -656,44 +732,40 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return true;
   };
 
-  const switchUserDirect = (userId: string): boolean => {
+  /**
+   * Solicita un cambio de usuario. NO cambia la sesión por sí solo: abre la
+   * pantalla de PIN con el usuario preseleccionado.
+   *
+   * Antes existía un `switchUserDirect` que cambiaba de sesión sin pedir PIN,
+   * con lo cual cualquiera parado frente a la caja podía pasar de Cajero a
+   * Dueño desde el menú del navbar. Eso era una escalada de privilegios.
+   */
+  const requestUserSwitch = (userId: string): void => {
     const targetUser = users.find((u) => u.id === userId);
     if (!targetUser) {
       showToast('Usuario no encontrado', 'error');
-      return false;
+      return;
     }
-
-    setCurrentUser(targetUser);
-    setIsLoginModalOpen(false);
-    showToast(`Sesión cambiada a ${targetUser.name} (${targetUser.roleTitle})`, 'info');
-    if (targetUser.role === 'SUPERADMIN') {
-      setIsSupportMode(true);
-      setActiveViewRaw('master_portal');
-    } else if (targetUser.role === 'DUEÑO') {
-      if (activeView === 'pos' && cart.length === 0) {
-        setActiveViewRaw('dashboard');
-      }
-    } else {
-      if (!canAccessView(activeView)) {
-        setActiveViewRaw('pos');
-      }
-    }
-    return true;
+    setPendingSwitchUserId(userId);
+    setIsLoginModalOpen(true);
   };
 
-  // Recovery Codes State: { [email]: { code: string, expiresAt: number } }
-  const [recoveryRequests, setRecoveryRequests] = useState<Record<string, { code: string; expiresAt: number }>>({});
+  const clearPendingSwitch = useCallback(() => setPendingSwitchUserId(null), []);
 
+  /**
+   * Paso 1 del restablecimiento de PIN: identifica al usuario por su email.
+   *
+   * Antes esto generaba un código de 6 dígitos y lo mostraba en pantalla (y el
+   * modal lo autocompletaba), de modo que cualquiera parado frente a la caja
+   * podía restablecer el PIN del Dueño en segundos. Como no hay backend de
+   * correo, el código se eliminó: ahora el reset se autoriza con la contraseña
+   * maestra, que sí es un secreto que el atacante no tiene.
+   */
   const requestPinRecovery = (
     email: string
-  ): { success: boolean; user?: User; message: string; recoveryCode?: string } => {
+  ): { success: boolean; user?: User; message: string } => {
     const cleanEmail = email.trim().toLowerCase();
-    const targetUser = users.find(
-      (u) =>
-        (u.email && u.email.toLowerCase() === cleanEmail) ||
-        (cleanEmail === 'riojadecoraciones@gmail.com' && u.role === 'DUEÑO') ||
-        (cleanEmail === 'admin@faro.com' && u.role === 'DUEÑO')
-    );
+    const targetUser = users.find((u) => u.email && u.email.toLowerCase() === cleanEmail);
 
     if (!targetUser) {
       return {
@@ -702,37 +774,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
     }
 
-    // Generate 6 digit OTP
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
-    const expiresAt = Date.now() + 15 * 60 * 1000; // 15 minutes
-
-    setRecoveryRequests((prev) => ({
-      ...prev,
-      [cleanEmail]: { code, expiresAt },
-      [(targetUser.email || '').toLowerCase()]: { code, expiresAt },
-    }));
-
-    showToast(
-      `📧 Código de recuperación para ${targetUser.name} (${targetUser.email || email}): ${code}`,
-      'info',
-      { isPersistent: true }
-    );
+    if (!IS_MASTER_ACCESS_CONFIGURED) {
+      return {
+        success: false,
+        message:
+          'El restablecimiento de PIN requiere la contraseña maestra, que no está configurada en esta instalación. ' +
+          'Pedile al Dueño que cambie el PIN desde el módulo Empleados.',
+      };
+    }
 
     return {
       success: true,
       user: targetUser,
-      message: `Hemos enviado el código de recuperación a ${targetUser.email || email}.`,
-      recoveryCode: code,
+      message: `Para restablecer el PIN de ${targetUser.name} ingresá la contraseña maestra del sistema.`,
     };
   };
 
-  const resetPinWithCode = async (
+  /**
+   * Paso 2: aplica el PIN nuevo, autorizado con la contraseña maestra.
+   * El PIN se guarda siempre hasheado.
+   */
+  const resetPinWithMasterPassword = async (
     email: string,
-    code: string,
+    masterPassword: string,
     newPin: string
   ): Promise<{ success: boolean; message: string }> => {
     const cleanEmail = email.trim().toLowerCase();
-    const cleanCode = code.trim();
     const cleanPin = newPin.trim();
 
     if (cleanPin.length !== 4 || !/^\d{4}$/.test(cleanPin)) {
@@ -742,23 +809,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
     }
 
-    const rec = recoveryRequests[cleanEmail];
-    const isValid = (rec && rec.code === cleanCode) || cleanCode === '777888';
+    if (!IS_MASTER_ACCESS_CONFIGURED) {
+      return { success: false, message: MASTER_NOT_CONFIGURED_MESSAGE };
+    }
 
-    if (!isValid) {
+    const authorized = await verifySecret(masterPassword.trim(), MASTER_PASSWORD_HASH);
+    if (!authorized) {
       return {
         success: false,
-        message: 'El código de seguridad ingresado es inválido o no coincide.',
+        message: 'Contraseña maestra incorrecta. El PIN no fue modificado.',
       };
     }
 
-    const targetUser = users.find(
-      (u) =>
-        (u.email && u.email.toLowerCase() === cleanEmail) ||
-        (cleanEmail === 'riojadecoraciones@gmail.com' && u.role === 'DUEÑO') ||
-        (cleanEmail === 'admin@faro.com' && u.role === 'DUEÑO')
-    );
-
+    const targetUser = users.find((u) => u.email && u.email.toLowerCase() === cleanEmail);
     if (!targetUser) {
       return {
         success: false,
@@ -766,29 +829,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
     }
 
+    let hashedPin: string;
     try {
-      await userService.updatePin(targetUser.id, cleanPin);
+      hashedPin = await hashSecret(cleanPin);
+    } catch (e) {
+      console.error('Error hasheando el PIN:', e);
+      return { success: false, message: 'No se pudo procesar el PIN de forma segura.' };
+    }
+
+    try {
+      await userService.updatePin(targetUser.id, hashedPin);
     } catch (e) {
       console.error('Error updating pin in Supabase:', e);
+      return {
+        success: false,
+        message: 'No se pudo guardar el nuevo PIN en el servidor. Intentá de nuevo.',
+      };
     }
 
-    // Update PIN in state
-    setUsers((prev) =>
-      prev.map((u) => (u.id === targetUser.id ? { ...u, pin: cleanPin } : u))
-    );
+    setUsers((prev) => prev.map((u) => (u.id === targetUser.id ? { ...u, pin: hashedPin } : u)));
 
     if (currentUser?.id === targetUser.id) {
-      setCurrentUser((prev) => (prev ? { ...prev, pin: cleanPin } : null));
+      setCurrentUser((prev) => (prev ? { ...prev, pin: hashedPin } : null));
     }
 
-    // Clear request
-    setRecoveryRequests((prev) => {
-      const copy = { ...prev };
-      delete copy[cleanEmail];
-      return copy;
-    });
-
-    showToast(`✓ PIN restablecido con éxito para ${targetUser.name}. Ya puedes ingresar con tu nueva clave.`, 'success');
+    showToast(`PIN restablecido con éxito para ${targetUser.name}.`, 'success');
     return {
       success: true,
       message: 'PIN actualizado exitosamente.',
@@ -801,8 +866,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return false;
     }
 
+    let hashedPin: string;
     try {
-      await userService.updatePin(userId, newPin);
+      hashedPin = await hashSecret(newPin);
+    } catch (e) {
+      console.error('Error hasheando el PIN:', e);
+      showToast('No se pudo procesar el PIN de forma segura', 'error');
+      return false;
+    }
+
+    try {
+      await userService.updatePin(userId, hashedPin);
     } catch (e) {
       console.error('Error updating PIN in Supabase:', e);
       showToast('Error al actualizar PIN en el servidor', 'error');
@@ -810,11 +884,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     setUsers((prev) =>
-      prev.map((u) => (u.id === userId ? { ...u, pin: newPin } : u))
+      prev.map((u) => (u.id === userId ? { ...u, pin: hashedPin } : u))
     );
 
     if (currentUser?.id === userId) {
-      setCurrentUser((prev) => (prev ? { ...prev, pin: newPin } : null));
+      setCurrentUser((prev) => (prev ? { ...prev, pin: hashedPin } : null));
     }
 
     showToast('PIN de seguridad actualizado correctamente', 'success');
@@ -829,13 +903,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       .toUpperCase()
       .substring(0, 2);
 
+    if (!/^\d{4}$/.test(userData.pin || '')) {
+      showToast('El PIN debe tener 4 dígitos numéricos', 'error');
+      return;
+    }
+
+    let hashedPin: string;
+    try {
+      hashedPin = await hashSecret(userData.pin);
+    } catch (e) {
+      console.error('Error hasheando el PIN:', e);
+      showToast('No se pudo procesar el PIN de forma segura', 'error');
+      return;
+    }
+
     const newUser: User = {
       ...userData,
+      pin: hashedPin,
       id: `usr-${Date.now()}`,
       initials: initials || 'U',
-      avatarUrl:
-        userData.avatarUrl ||
-        `https://images.unsplash.com/photo-${1534528741775 + users.length * 1000}?w=150&auto=format&fit=crop&q=80`,
+      avatarUrl: userData.avatarUrl || '',
     };
 
     try {
@@ -850,8 +937,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updateUser = async (id: string, userData: Partial<User>) => {
+    // El PIN nunca se actualiza por esta vía: usá updateUserPin, que lo hashea.
+    const { pin, ...safeUserData } = userData;
+    if (pin !== undefined && !isHashed(pin)) {
+      console.warn('updateUser recibió un PIN en texto plano: se ignoró. Usá updateUserPin.');
+    }
+
     try {
-      await userService.update(id, userData);
+      await userService.update(id, safeUserData);
     } catch (e) {
       console.error('Error updating user in Supabase:', e);
     }
@@ -2105,117 +2198,52 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // MASTER TECH SUPPORT AUTHENTICATION
   // ==========================================
 
-  const sendMasterVerificationCode = (email: string): { success: boolean; message: string; code?: string } => {
-    const cleanEmail = email.trim().toLowerCase();
-    if (!cleanEmail || !cleanEmail.includes('@')) {
-      showToast('Por favor ingresa un correo Gmail válido', 'error');
-      return { success: false, message: 'Correo inválido' };
+  /**
+   * Autenticación maestra de soporte.
+   *
+   * Se verifica contra el hash PBKDF2 de VITE_MASTER_PASSWORD_HASH. Ya no hay
+   * contraseña por defecto ni códigos de emergencia embebidos en el código:
+   * el repositorio es público y cualquiera podía leerlos.
+   */
+  const loginMaster = async (password: string): Promise<{ success: boolean; message: string }> => {
+    if (!IS_MASTER_ACCESS_CONFIGURED) {
+      showToast(MASTER_NOT_CONFIGURED_MESSAGE, 'error', { isPersistent: true });
+      return { success: false, message: MASTER_NOT_CONFIGURED_MESSAGE };
     }
 
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
-    const timestamp = Date.now();
-
-    setMasterAuth((prev) => ({
-      ...prev,
-      lastVerificationCode: code,
-      lastCodeTimestamp: timestamp,
-    }));
-
-    showToast(`Código de verificación enviado a ${cleanEmail}: ${code}`, 'info', {
-      title: '🔐 Código de Verificación Maestro',
-      isPersistent: true,
-      actionLabel: 'Copiar Código',
-      onAction: () => {
-        navigator.clipboard?.writeText(code);
-        showToast('Código copiado al portapapeles', 'success');
-      },
-    });
-
-    return { success: true, message: `Código de 6 dígitos generado para ${cleanEmail}`, code };
-  };
-
-  const registerMasterAccount = (
-    email: string,
-    password: string,
-    code: string
-  ): { success: boolean; message: string } => {
-    const cleanEmail = email.trim().toLowerCase();
-    if (!cleanEmail || !cleanEmail.includes('@')) {
-      showToast('Ingresa un correo electrónico válido', 'error');
-      return { success: false, message: 'Correo inválido' };
-    }
-    if (!password || password.length < 4) {
-      showToast('La contraseña debe tener al menos 4 caracteres', 'error');
-      return { success: false, message: 'Contraseña muy corta' };
-    }
-    if (!code || (code !== masterAuth.lastVerificationCode && code !== '999999')) {
-      showToast('Código de verificación incorrecto o no solicitado', 'error');
-      return { success: false, message: 'Código de verificación incorrecto' };
+    const authorized = await verifySecret(password.trim(), MASTER_PASSWORD_HASH);
+    if (!authorized) {
+      showToast('Contraseña maestra incorrecta', 'error');
+      return { success: false, message: 'Contraseña inválida' };
     }
 
-    const updated: MasterAuthConfig = {
-      email: cleanEmail,
-      isRegistered: true,
-      password: password,
-      lastVerificationCode: undefined,
-      lastCodeTimestamp: undefined,
-      lastLoginAt: new Date().toISOString(),
+    const masterUser: User = {
+      id: 'usr-master-superadmin',
+      name: 'Dueño del Sistema (Master)',
+      email: masterAuth.email || '',
+      role: 'SUPERADMIN',
+      roleTitle: 'Desarrollador / Llave Maestra',
+      pin: '',
+      avatarUrl: '',
+      initials: 'MS',
+      canDiscount: true,
+      canRefund: true,
+      canManageInventory: true,
     };
 
-    setMasterAuth(updated);
+    setCurrentUser(masterUser);
     setIsSupportMode(true);
+    setMasterAuth((prev) => ({ ...prev, lastLoginAt: new Date().toISOString() }));
     try {
       sessionStorage.setItem('rioja_support_mode', 'true');
     } catch (e) {
       console.error(e);
     }
+    setIsLoginModalOpen(false);
     setIsMasterAuthModalOpen(false);
-    setIsSupportModalOpen(true);
-    showToast('Cuenta maestra de soporte registrada y verificada con éxito', 'success', {
-      title: 'Acceso Maestro Concedido',
-    });
-
-    return { success: true, message: 'Registro exitoso' };
-  };
-
-  const loginMaster = (password: string): { success: boolean; message: string } => {
-    const cleanPass = password.trim();
-    const currentPass = masterAuth.password || 'FAROPROJECTjl2209';
-
-    if (cleanPass === currentPass || cleanPass === 'FAROPROJECTjl2209') {
-      const masterUser: User = {
-        id: 'usr-master-superadmin',
-        name: 'Dueño del Sistema (Master)',
-        email: masterAuth.email || 'riojadecoraciones@gmail.com',
-        role: 'SUPERADMIN',
-        roleTitle: 'Desarrollador / Llave Maestra',
-        pin: '9999',
-        avatarUrl: '',
-        initials: 'MS',
-        canDiscount: true,
-        canRefund: true,
-        canManageInventory: true,
-      };
-
-      setCurrentUser(masterUser);
-      setIsSupportMode(true);
-      setMasterAuth((prev) => ({ ...prev, lastLoginAt: new Date().toISOString() }));
-      try {
-        sessionStorage.setItem('rioja_support_mode', 'true');
-      } catch (e) {
-        console.error(e);
-      }
-      setIsLoginModalOpen(false);
-      setIsMasterAuthModalOpen(false);
-      setActiveViewRaw('master_portal');
-      showToast('🛠️ Acceso Maestro Total Autorizado — Bienvenido Dueño del Sistema', 'success', {
-        title: 'Llave Maestra Concedida',
-      });
-      return { success: true, message: 'Autenticación exitosa' };
-    }
-
-    showToast('Contraseña Maestra incorrecta', 'error');
-    return { success: false, message: 'Contraseña inválida' };
+    setActiveViewRaw('master_portal');
+    showToast('Acceso Maestro autorizado', 'success', { title: 'Llave Maestra Concedida' });
+    return { success: true, message: 'Autenticación exitosa' };
   };
 
   const loginMasterSuperAdmin = loginMaster;
@@ -2270,33 +2298,38 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     showToast('Regresando al Portal Maestro', 'info');
   };
 
-  const resetMasterPassword = (
-    email: string,
-    code: string,
-    newPassword: string
-  ): { success: boolean; message: string } => {
-    const cleanEmail = email.trim().toLowerCase();
-    if (cleanEmail !== masterAuth.email.toLowerCase()) {
-      showToast('El correo no coincide con el Gmail maestro registrado', 'error');
-      return { success: false, message: 'Correo no coincide' };
-    }
-    if (!code || (code !== masterAuth.lastVerificationCode && code !== '999999')) {
-      showToast('Código de verificación incorrecto', 'error');
-      return { success: false, message: 'Código incorrecto' };
-    }
-    if (!newPassword || newPassword.length < 4) {
-      showToast('La nueva contraseña debe tener al menos 4 caracteres', 'error');
-      return { success: false, message: 'Contraseña muy corta' };
+  /**
+   * Actualiza sólo el email de contacto del acceso maestro (dato no sensible).
+   *
+   * La contraseña maestra ya no se puede cambiar desde el navegador: es un
+   * secreto de build (VITE_MASTER_PASSWORD_HASH). Antes existían
+   * `registerMasterAccount` y `resetMasterPassword`, que permitían registrar o
+   * restablecer la llave maestra desde la pantalla de login usando un código
+   * fijo embebido en el código fuente. Para rotarla ahora: `npm run hash-password`
+   * y actualizar .env.local.
+   */
+  const updateMasterEmail = (newEmail: string): { success: boolean; message: string } => {
+    const cleanEmail = newEmail.trim().toLowerCase();
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      showToast('Ingresá un correo electrónico válido', 'error');
+      return { success: false, message: 'Correo inválido' };
     }
 
-    setMasterAuth((prev) => ({
-      ...prev,
-      password: newPassword,
-      isRegistered: true,
-      lastVerificationCode: undefined,
-      lastCodeTimestamp: undefined,
-      lastLoginAt: new Date().toISOString(),
-    }));
+    setMasterAuth((prev) => ({ ...prev, email: cleanEmail }));
+    showToast('Correo de contacto del acceso maestro actualizado', 'success');
+    return { success: true, message: 'Correo actualizado' };
+  };
+
+  const activateSupportMode = async (password: string): Promise<boolean> => {
+    if (!IS_MASTER_ACCESS_CONFIGURED) {
+      showToast(MASTER_NOT_CONFIGURED_MESSAGE, 'error', { isPersistent: true });
+      return false;
+    }
+
+    if (!(await verifySecret(password.trim(), MASTER_PASSWORD_HASH))) {
+      showToast('Contraseña maestra inválida', 'error');
+      return false;
+    }
 
     setIsSupportMode(true);
     try {
@@ -2304,49 +2337,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } catch (e) {
       console.error(e);
     }
-    setIsMasterAuthModalOpen(false);
-    setIsSupportModalOpen(true);
-    showToast('Contraseña maestra restablecida y sesión iniciada', 'success');
-    return { success: true, message: 'Contraseña restablecida' };
-  };
-
-  const updateMasterCredentials = (
-    newEmail: string,
-    newPassword?: string
-  ): { success: boolean; message: string } => {
-    const cleanEmail = newEmail.trim().toLowerCase();
-    if (!cleanEmail || !cleanEmail.includes('@')) {
-      showToast('Ingresa un correo electrónico válido', 'error');
-      return { success: false, message: 'Correo inválido' };
-    }
-
-    setMasterAuth((prev) => ({
-      ...prev,
-      email: cleanEmail,
-      isRegistered: true,
-      password: newPassword ? newPassword : prev.password,
-    }));
-
-    showToast('Credenciales maestras de soporte actualizadas exitosamente', 'success');
-    return { success: true, message: 'Credenciales actualizadas' };
-  };
-
-  const activateSupportMode = (pinOrPass: string): boolean => {
-    if (
-      (masterAuth.password && pinOrPass === masterAuth.password) ||
-      (!masterAuth.isRegistered && (pinOrPass === 'admin9999' || pinOrPass === 'soporte2026'))
-    ) {
-      setIsSupportMode(true);
-      try {
-        sessionStorage.setItem('rioja_support_mode', 'true');
-      } catch (e) {
-        console.error(e);
-      }
-      showToast('🛠️ Modo Soporte Maestro Activado', 'success');
-      return true;
-    }
-    showToast('Contraseña maestra inválida', 'error');
-    return false;
+    showToast('Modo Soporte Maestro activado', 'success');
+    return true;
   };
 
   const deactivateSupportMode = () => {
@@ -2469,13 +2461,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         login,
         logout,
         switchUser,
-        switchUserDirect,
+        requestUserSwitch,
+        pendingSwitchUserId,
+        clearPendingSwitch,
         addUser,
         updateUser,
         deleteUser,
         updateUserPin,
         requestPinRecovery,
-        resetPinWithCode,
+        resetPinWithMasterPassword,
+        isMasterAccessConfigured: IS_MASTER_ACCESS_CONFIGURED,
         activeView,
         setActiveView,
         canAccessView,
@@ -2537,12 +2532,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         masterAuth,
         isMasterAuthModalOpen,
         setIsMasterAuthModalOpen,
-        sendMasterVerificationCode,
-        registerMasterAccount,
+
         loginMaster,
         loginMasterSuperAdmin,
-        resetMasterPassword,
-        updateMasterCredentials,
+        updateMasterEmail,
         isSupportMode,
         isSupportModalOpen,
         setIsSupportModalOpen,

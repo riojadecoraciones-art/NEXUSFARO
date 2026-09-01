@@ -43,7 +43,7 @@ export const Navbar: React.FC<NavbarProps> = ({
     setActiveView,
     activeView,
     setIsLoginModalOpen,
-    switchUserDirect,
+    requestUserSwitch,
     logout,
     isNotificationsPanelOpen,
     setIsNotificationsPanelOpen,
@@ -296,7 +296,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                       <button
                         key={user.id}
                         onClick={() => {
-                          switchUserDirect(user.id);
+                          requestUserSwitch(user.id);
                           setIsUserMenuOpen(false);
                         }}
                         className={`w-full flex items-center justify-between p-2 rounded-xl text-left transition-colors text-xs ${

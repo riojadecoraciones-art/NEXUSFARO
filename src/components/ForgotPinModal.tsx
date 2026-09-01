@@ -10,7 +10,8 @@ import {
   X,
   Lock,
   RefreshCw,
-  Sparkles,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import { User } from '../types';
 
@@ -21,61 +22,62 @@ interface ForgotPinModalProps {
   onSuccess?: () => void;
 }
 
+/**
+ * Restablecimiento de PIN.
+ *
+ * La versión anterior simulaba un envío por correo: generaba un código de 6
+ * dígitos, lo mostraba en pantalla y lo autocompletaba en el formulario, así que
+ * cualquier persona parada frente a la caja podía restablecer el PIN del Dueño.
+ * Además, el código fijo "777888" servía siempre.
+ *
+ * Mientras no exista un backend que envíe correos, la autorización la da la
+ * contraseña maestra del sistema: un secreto que el atacante no tiene.
+ */
 export const ForgotPinModal: React.FC<ForgotPinModalProps> = ({
   isOpen,
   onClose,
   defaultUser,
   onSuccess,
 }) => {
-  const { requestPinRecovery, resetPinWithCode, showToast, users } = useApp();
+  const { requestPinRecovery, resetPinWithMasterPassword, users, isMasterAccessConfigured } = useApp();
 
-  const [step, setStep] = useState<'EMAIL' | 'VERIFY_OTP' | 'SUCCESS'>('EMAIL');
-  const [email, setEmail] = useState<string>(
-    defaultUser?.email || (defaultUser?.role === 'DUEÑO' ? 'riojadecoraciones@gmail.com' : '')
-  );
+  const [step, setStep] = useState<'EMAIL' | 'AUTHORIZE' | 'SUCCESS'>('EMAIL');
+  const [email, setEmail] = useState<string>(defaultUser?.email || '');
   const [targetUser, setTargetUser] = useState<User | null>(defaultUser || null);
-  const [otpCode, setOtpCode] = useState<string>('');
+  const [masterPassword, setMasterPassword] = useState<string>('');
+  const [showMasterPassword, setShowMasterPassword] = useState<boolean>(false);
   const [newPin, setNewPin] = useState<string>('');
   const [confirmPin, setConfirmPin] = useState<string>('');
-  const [simulatedCodeReceived, setSimulatedCodeReceived] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
 
   if (!isOpen) return null;
 
-  const handleSendCode = (e: React.FormEvent) => {
+  const handleIdentifyUser = (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
 
     if (!email.trim() || !email.includes('@')) {
-      setErrorMessage('Por favor ingresa un correo electrónico válido');
+      setErrorMessage('Ingresá un correo electrónico válido');
       return;
     }
 
-    setIsLoading(true);
-    setTimeout(() => {
-      const res = requestPinRecovery(email);
-      setIsLoading(false);
+    const res = requestPinRecovery(email);
+    if (!res.success) {
+      setErrorMessage(res.message);
+      return;
+    }
 
-      if (res.success) {
-        setTargetUser(res.user || null);
-        if (res.recoveryCode) {
-          setSimulatedCodeReceived(res.recoveryCode);
-          setOtpCode(res.recoveryCode); // Pre-populate for fluid UX
-        }
-        setStep('VERIFY_OTP');
-      } else {
-        setErrorMessage(res.message);
-      }
-    }, 400);
+    setTargetUser(res.user || null);
+    setStep('AUTHORIZE');
   };
 
-  const handleResetPin = (e: React.FormEvent) => {
+  const handleResetPin = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
 
-    if (!otpCode.trim()) {
-      setErrorMessage('Ingresa el código de 6 dígitos enviado a tu correo');
+    if (!masterPassword.trim()) {
+      setErrorMessage('Ingresá la contraseña maestra del sistema');
       return;
     }
 
@@ -90,30 +92,29 @@ export const ForgotPinModal: React.FC<ForgotPinModalProps> = ({
     }
 
     setIsLoading(true);
-    setTimeout(async () => {
-      const res = await resetPinWithCode(email, otpCode, newPin);
-      setIsLoading(false);
+    const res = await resetPinWithMasterPassword(email, masterPassword, newPin);
+    setIsLoading(false);
+    setMasterPassword('');
 
-      if (res.success) {
-        setStep('SUCCESS');
-        if (onSuccess) {
-          setTimeout(onSuccess, 1500);
-        }
-      } else {
-        setErrorMessage(res.message);
-      }
-    }, 400);
+    if (res.success) {
+      setNewPin('');
+      setConfirmPin('');
+      setStep('SUCCESS');
+      if (onSuccess) setTimeout(onSuccess, 1500);
+    } else {
+      setErrorMessage(res.message);
+    }
   };
 
   const handleQuickSelectUser = (user: User) => {
     setTargetUser(user);
-    setEmail(user.email || 'riojadecoraciones@gmail.com');
+    setEmail(user.email || '');
   };
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/70 backdrop-blur-sm p-4 overflow-y-auto">
       <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden animate-in zoom-in-95 duration-200">
-        
+
         {/* Modal Header */}
         <div className="bg-gradient-to-r from-blue-700 via-blue-800 to-indigo-900 p-6 text-white relative">
           <button
@@ -127,24 +128,34 @@ export const ForgotPinModal: React.FC<ForgotPinModalProps> = ({
             <KeyRound className="w-6 h-6 text-blue-200" />
           </div>
 
-          <h3 className="text-xl font-black tracking-tight">Recuperación de PIN</h3>
+          <h3 className="text-xl font-black tracking-tight">Restablecer PIN</h3>
           <p className="text-xs text-blue-200 mt-1">
-            Restablece tu clave de seguridad de forma segura mediante tu correo
+            Autorizado con la contraseña maestra del sistema
           </p>
         </div>
 
         {/* Modal Body */}
         <div className="p-6 sm:p-7 space-y-5">
           {errorMessage && (
-            <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl text-xs font-semibold flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 shrink-0 text-rose-500" />
+            <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl text-xs font-semibold flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0 text-rose-500 mt-0.5" />
               <span>{errorMessage}</span>
             </div>
           )}
 
-          {/* STEP 1: Enter Email */}
+          {!isMasterAccessConfigured && step !== 'SUCCESS' && (
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-[11px] text-amber-900 leading-relaxed">
+              <strong className="block mb-1">Restablecimiento no disponible</strong>
+              Esta instalación no tiene configurada la contraseña maestra. Pedile al Dueño que cambie
+              el PIN desde el módulo <strong>Empleados</strong>, o configurá{' '}
+              <code className="font-mono font-bold">VITE_MASTER_PASSWORD_HASH</code> con{' '}
+              <code className="font-mono font-bold">npm run hash-password</code>.
+            </div>
+          )}
+
+          {/* PASO 1: Identificar al usuario */}
           {step === 'EMAIL' && (
-            <form onSubmit={handleSendCode} className="space-y-4">
+            <form onSubmit={handleIdentifyUser} className="space-y-4">
               <div>
                 <label className="text-xs font-bold text-slate-700 block mb-1.5">
                   Correo Electrónico Registrado
@@ -156,39 +167,43 @@ export const ForgotPinModal: React.FC<ForgotPinModalProps> = ({
                     required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="ej: riojadecoraciones@gmail.com"
+                    placeholder="correo@ejemplo.com"
                     className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-300 rounded-xl text-sm font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white"
                   />
                 </div>
               </div>
 
-              {/* Quick Owner Email shortcut */}
               <div className="p-3 bg-blue-50/70 border border-blue-100 rounded-xl space-y-2">
                 <div className="text-[11px] font-bold text-blue-900 flex items-center gap-1.5">
                   <ShieldCheck className="w-3.5 h-3.5 text-blue-600" />
                   <span>Cuentas configuradas en el sistema:</span>
                 </div>
                 <div className="space-y-1.5">
-                  {users.map((u) => (
-                    <button
-                      key={u.id}
-                      type="button"
-                      onClick={() => handleQuickSelectUser(u)}
-                      className={`w-full text-left p-2 rounded-lg text-xs flex items-center justify-between transition-colors ${
-                        email === (u.email || (u.role === 'DUEÑO' ? 'riojadecoraciones@gmail.com' : ''))
-                          ? 'bg-blue-600 text-white font-bold'
-                          : 'bg-white text-slate-700 hover:bg-blue-100/50 border border-slate-200'
-                      }`}
-                    >
-                      <div className="truncate">
-                        <span className="font-bold">{u.name}</span>{' '}
-                        <span className="opacity-80">({u.roleTitle})</span>
-                      </div>
-                      <span className="text-[10px] font-mono shrink-0 ml-2 opacity-90">
-                        {u.email || (u.role === 'DUEÑO' ? 'riojadecoraciones@gmail.com' : 'sin correo')}
-                      </span>
-                    </button>
-                  ))}
+                  {users
+                    .filter((u) => u.email)
+                    .map((u) => (
+                      <button
+                        key={u.id}
+                        type="button"
+                        onClick={() => handleQuickSelectUser(u)}
+                        className={`w-full text-left p-2 rounded-lg text-xs flex items-center justify-between transition-colors ${
+                          email === u.email
+                            ? 'bg-blue-600 text-white font-bold'
+                            : 'bg-white text-slate-700 hover:bg-blue-100/50 border border-slate-200'
+                        }`}
+                      >
+                        <div className="truncate">
+                          <span className="font-bold">{u.name}</span>{' '}
+                          <span className="opacity-80">({u.roleTitle})</span>
+                        </div>
+                        <span className="text-[10px] font-mono shrink-0 ml-2 opacity-90">{u.email}</span>
+                      </button>
+                    ))}
+                  {users.filter((u) => u.email).length === 0 && (
+                    <div className="text-[11px] text-slate-500 py-1">
+                      Ningún usuario tiene correo cargado. Agregalo desde Empleados.
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -202,51 +217,49 @@ export const ForgotPinModal: React.FC<ForgotPinModalProps> = ({
                 </button>
                 <button
                   type="submit"
-                  disabled={isLoading}
-                  className="flex-1 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs transition-all shadow-md flex items-center justify-center gap-2"
+                  disabled={!isMasterAccessConfigured}
+                  className="flex-1 py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:hover:bg-blue-600 text-white font-bold rounded-xl text-xs transition-all shadow-md flex items-center justify-center gap-2"
                 >
-                  {isLoading ? (
-                    <RefreshCw className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <span>Enviar Código</span>
-                  )}
+                  <span>Continuar</span>
                 </button>
               </div>
             </form>
           )}
 
-          {/* STEP 2: Verify OTP & Set New PIN */}
-          {step === 'VERIFY_OTP' && (
+          {/* PASO 2: Autorizar con la contraseña maestra y fijar el PIN nuevo */}
+          {step === 'AUTHORIZE' && (
             <form onSubmit={handleResetPin} className="space-y-4">
-              {/* Simulated Email Notification Card */}
-              {simulatedCodeReceived && (
-                <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-xl space-y-1 text-emerald-900 animate-in fade-in">
-                  <div className="flex items-center gap-1.5 text-xs font-bold">
-                    <Sparkles className="w-4 h-4 text-emerald-600" />
-                    <span>Bandeja de Entrada (Simulada):</span>
-                  </div>
-                  <div className="text-xs text-emerald-800">
-                    Código de verificación para <strong>{email}</strong>:{' '}
-                    <span className="font-mono font-black text-sm bg-white px-2 py-0.5 rounded border border-emerald-300 text-emerald-950">
-                      {simulatedCodeReceived}
-                    </span>
-                  </div>
+              {targetUser && (
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700">
+                  Restableciendo el PIN de{' '}
+                  <strong className="text-slate-900">{targetUser.name}</strong>{' '}
+                  <span className="text-slate-500">({targetUser.roleTitle})</span>
                 </div>
               )}
 
               <div>
                 <label className="text-xs font-bold text-slate-700 block mb-1">
-                  Código de 6 Dígitos
+                  Contraseña Maestra del Sistema
                 </label>
-                <input
-                  type="text"
-                  maxLength={6}
-                  required
-                  value={otpCode}
-                  onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ''))}
-                  placeholder="123456"
-                  className="w-full text-center tracking-widest font-mono text-xl py-2.5 bg-slate-50 border border-slate-300 rounded-xl font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white"
-                />
+                <div className="relative">
+                  <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    type={showMasterPassword ? 'text' : 'password'}
+                    required
+                    autoFocus
+                    value={masterPassword}
+                    onChange={(e) => setMasterPassword(e.target.value)}
+                    placeholder="Contraseña maestra"
+                    className="w-full pl-10 pr-11 py-3 bg-slate-50 border border-slate-300 rounded-xl text-sm font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowMasterPassword(!showMasterPassword)}
+                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1"
+                  >
+                    {showMasterPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -266,9 +279,7 @@ export const ForgotPinModal: React.FC<ForgotPinModalProps> = ({
                 </div>
 
                 <div>
-                  <label className="text-xs font-bold text-slate-700 block mb-1">
-                    Confirmar PIN
-                  </label>
+                  <label className="text-xs font-bold text-slate-700 block mb-1">Confirmar PIN</label>
                   <input
                     type="password"
                     maxLength={4}
@@ -284,7 +295,11 @@ export const ForgotPinModal: React.FC<ForgotPinModalProps> = ({
               <div className="pt-2 flex gap-3">
                 <button
                   type="button"
-                  onClick={() => setStep('EMAIL')}
+                  onClick={() => {
+                    setMasterPassword('');
+                    setErrorMessage(null);
+                    setStep('EMAIL');
+                  }}
                   className="py-3 px-4 border border-slate-300 hover:bg-slate-100 text-slate-700 font-bold rounded-xl text-xs transition-colors flex items-center gap-1.5"
                 >
                   <ArrowLeft className="w-3.5 h-3.5" />
@@ -293,7 +308,7 @@ export const ForgotPinModal: React.FC<ForgotPinModalProps> = ({
                 <button
                   type="submit"
                   disabled={isLoading}
-                  className="flex-1 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs transition-all shadow-md flex items-center justify-center gap-2"
+                  className="flex-1 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs transition-all shadow-md flex items-center justify-center gap-2 disabled:opacity-50"
                 >
                   {isLoading ? (
                     <RefreshCw className="w-4 h-4 animate-spin" />
@@ -305,7 +320,7 @@ export const ForgotPinModal: React.FC<ForgotPinModalProps> = ({
             </form>
           )}
 
-          {/* STEP 3: Success */}
+          {/* PASO 3: Confirmación */}
           {step === 'SUCCESS' && (
             <div className="text-center py-6 space-y-4 animate-in zoom-in-95">
               <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 mx-auto flex items-center justify-center shadow-lg">
@@ -314,7 +329,7 @@ export const ForgotPinModal: React.FC<ForgotPinModalProps> = ({
               <div>
                 <h4 className="text-lg font-black text-slate-900">¡PIN Restablecido!</h4>
                 <p className="text-xs text-slate-600 mt-1 max-w-xs mx-auto">
-                  Tu nuevo PIN de seguridad de 4 dígitos ha sido configurado correctamente.
+                  El nuevo PIN de 4 dígitos quedó configurado y guardado de forma cifrada.
                 </p>
               </div>
               <button

@@ -214,12 +214,15 @@ export interface StoreInfo {
   receiptFooter: string;
 }
 
+/**
+ * Metadatos del acceso maestro de soporte.
+ * La contraseña nunca se persiste: se valida contra el hash PBKDF2 de la
+ * variable de entorno VITE_MASTER_PASSWORD_HASH.
+ */
 export interface MasterAuthConfig {
   email: string;
+  /** `true` sólo si VITE_MASTER_PASSWORD_HASH está configurado. */
   isRegistered: boolean;
-  password?: string;
-  lastVerificationCode?: string;
-  lastCodeTimestamp?: number;
   lastLoginAt?: string;
 }
 

@@ -36,11 +36,10 @@ export const SupportModal: React.FC = () => {
     storeInfo,
     updateStoreInfo,
     masterAuth,
-    updateMasterCredentials,
-    sendMasterVerificationCode,
+    updateMasterEmail,
     users,
     currentUser,
-    switchUserDirect,
+    requestUserSwitch,
     products,
     sales,
     shiftsHistory,
@@ -68,11 +67,7 @@ export const SupportModal: React.FC = () => {
   const [editCuit, setEditCuit] = useState(storeInfo?.cuit || '');
 
   // Master Security tab local state
-  const [newMasterEmail, setNewMasterEmail] = useState(masterAuth?.email || 'riojadecoraciones@gmail.com');
-  const [newMasterPass, setNewMasterPass] = useState('');
-  const [confirmMasterPass, setConfirmMasterPass] = useState('');
-  const [showPass, setShowPass] = useState(false);
-  const [isSendingSecCode, setIsSendingSecCode] = useState(false);
+  const [newMasterEmail, setNewMasterEmail] = useState(masterAuth?.email || '');
 
   if (!isSupportModalOpen) return null;
 
@@ -485,7 +480,7 @@ export const SupportModal: React.FC = () => {
                         <div>
                           <div className="font-bold text-xs text-slate-900">{u.name}</div>
                           <div className="text-[11px] text-slate-500 font-medium">
-                            {u.roleTitle} ({u.role}) • PIN: <span className="font-mono font-bold text-slate-700">{u.pin}</span>
+                            {u.roleTitle} ({u.role})
                           </div>
                         </div>
                       </div>
@@ -497,12 +492,12 @@ export const SupportModal: React.FC = () => {
                       ) : (
                         <button
                           onClick={() => {
-                            switchUserDirect(u.id);
-                            showToast(`Sesión cambiada a ${u.name}`, 'info');
+                            requestUserSwitch(u.id);
+                            setIsSupportModalOpen(false);
                           }}
                           className="px-3 py-1.5 bg-white border border-slate-300 hover:bg-blue-50 hover:border-blue-300 text-slate-700 hover:text-blue-700 font-bold rounded-lg text-xs transition-colors"
                         >
-                          Asumir Usuario
+                          Ingresar como…
                         </button>
                       )}
                     </div>
@@ -535,70 +530,44 @@ export const SupportModal: React.FC = () => {
                 </div>
               </div>
 
-              {/* Form: Update Password */}
+              {/*
+                La contraseña maestra ya no se cambia desde el navegador: es un
+                secreto de build (VITE_MASTER_PASSWORD_HASH), no un valor guardado
+                en localStorage. Acá sólo se edita el correo de contacto.
+              */}
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
-                  if (!newMasterPass) {
-                    showToast('Ingresa la nueva contraseña', 'warning');
-                    return;
-                  }
-                  if (newMasterPass.length < 4) {
-                    showToast('La contraseña debe tener al menos 4 caracteres', 'error');
-                    return;
-                  }
-                  if (newMasterPass !== confirmMasterPass) {
-                    showToast('Las contraseñas no coinciden', 'error');
-                    return;
-                  }
-                  updateMasterCredentials(newMasterEmail || 'riojadecoraciones@gmail.com', newMasterPass);
-                  setNewMasterPass('');
-                  setConfirmMasterPass('');
+                  updateMasterEmail(newMasterEmail);
                 }}
                 className="p-5 bg-slate-50 rounded-2xl border border-slate-200 space-y-4"
               >
                 <div className="flex items-center justify-between">
                   <h4 className="font-bold text-xs text-slate-900 uppercase tracking-wider flex items-center gap-2">
                     <KeyRound className="w-4 h-4 text-slate-600" />
-                    Cambiar Contraseña Maestra de Desarrollador
+                    Correo de contacto del acceso maestro
                   </h4>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-xs font-bold text-slate-700 block mb-1">
-                      Nueva Contraseña Maestra *
-                    </label>
-                    <div className="relative">
-                      <input
-                        type={showPass ? 'text' : 'password'}
-                        value={newMasterPass}
-                        onChange={(e) => setNewMasterPass(e.target.value)}
-                        placeholder="Ingresa nueva contraseña..."
-                        className="w-full px-3.5 py-2.5 pr-10 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 font-mono focus:outline-none focus:border-amber-500"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPass(!showPass)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                      >
-                        {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                      </button>
-                    </div>
-                  </div>
+                <div>
+                  <label className="text-xs font-bold text-slate-700 block mb-1">
+                    Correo electrónico
+                  </label>
+                  <input
+                    type="email"
+                    value={newMasterEmail}
+                    onChange={(e) => setNewMasterEmail(e.target.value)}
+                    placeholder="tucorreo@ejemplo.com"
+                    className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-amber-500"
+                  />
+                </div>
 
-                  <div>
-                    <label className="text-xs font-bold text-slate-700 block mb-1">
-                      Confirmar Contraseña *
-                    </label>
-                    <input
-                      type={showPass ? 'text' : 'password'}
-                      value={confirmMasterPass}
-                      onChange={(e) => setConfirmMasterPass(e.target.value)}
-                      placeholder="Repetir nueva contraseña..."
-                      className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 font-mono focus:outline-none focus:border-amber-500"
-                    />
-                  </div>
+                <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-[11px] text-amber-900 leading-relaxed">
+                  <strong className="block mb-1">¿Cómo cambio la contraseña maestra?</strong>
+                  Ejecutá <code className="font-mono font-bold">npm run hash-password</code> y pegá el
+                  resultado en <code className="font-mono font-bold">VITE_MASTER_PASSWORD_HASH</code> dentro
+                  de <code className="font-mono font-bold">.env.local</code>. La contraseña nunca se guarda
+                  en el navegador ni viaja a la base de datos: sólo se guarda su hash.
                 </div>
 
                 <div className="pt-2 flex justify-end">
@@ -607,7 +576,7 @@ export const SupportModal: React.FC = () => {
                     className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl text-xs shadow-md transition-all flex items-center gap-2"
                   >
                     <CheckCircle2 className="w-4 h-4" />
-                    <span>Actualizar Contraseña Maestra</span>
+                    <span>Guardar correo de contacto</span>
                   </button>
                 </div>
               </form>
@@ -624,11 +593,11 @@ export const SupportModal: React.FC = () => {
                   </div>
                   <div>
                     <span className="text-slate-400 block">Tipo de Protección:</span>
-                    <span className="font-medium text-slate-800">Contraseña Maestra Privada</span>
+                    <span className="font-medium text-slate-800">Hash PBKDF2-SHA256 (210.000 iteraciones)</span>
                   </div>
                   <div>
                     <span className="text-slate-400 block">Estado de la Base de Datos:</span>
-                    <span className="font-medium text-emerald-700 font-bold">Conectada y Encriptada</span>
+                    <span className="font-medium text-slate-800">Conectada (TLS)</span>
                   </div>
                 </div>
               </div>

@@ -73,7 +73,6 @@ export const MasterPortalView: React.FC = () => {
 
   const [isNewUserModalOpen, setIsNewUserModalOpen] = useState<boolean>(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
-  const [showPinsMap, setShowPinsMap] = useState<Record<string, boolean>>({});
 
   // Store Form state
   const [storeForm, setStoreForm] = useState<{
@@ -111,7 +110,7 @@ export const MasterPortalView: React.FC = () => {
     email: '',
     role: 'CAJERO',
     roleTitle: 'Cajero',
-    pin: '1234',
+    pin: '',
     canDiscount: false,
     canRefund: false,
     canManageInventory: false,
@@ -226,7 +225,7 @@ export const MasterPortalView: React.FC = () => {
       email: '',
       role: 'CAJERO',
       roleTitle: 'Cajero',
-      pin: '1234',
+      pin: '',
       canDiscount: false,
       canRefund: false,
       canManageInventory: false,
@@ -240,8 +239,9 @@ export const MasterPortalView: React.FC = () => {
       name: user.name,
       email: user.email || '',
       role: user.role,
+      // El PIN vive hasheado: se deja vacío y sólo se cambia si se escribe uno nuevo.
+      pin: '',
       roleTitle: user.roleTitle,
-      pin: user.pin,
       canDiscount: user.canDiscount,
       canRefund: user.canRefund,
       canManageInventory: user.canManageInventory,
@@ -255,7 +255,9 @@ export const MasterPortalView: React.FC = () => {
       showToast('El nombre del usuario es obligatorio', 'error');
       return;
     }
-    if (userForm.pin.length !== 4 || !/^\d{4}$/.test(userForm.pin)) {
+    // Al editar, el PIN es opcional: vacío significa "dejarlo como está".
+    const pinTouched = userForm.pin.length > 0;
+    if ((!editingUser || pinTouched) && !/^\d{4}$/.test(userForm.pin)) {
       showToast('El PIN debe contener exactamente 4 dígitos numéricos', 'error');
       return;
     }
@@ -266,11 +268,14 @@ export const MasterPortalView: React.FC = () => {
         email: userForm.email || undefined,
         role: userForm.role,
         roleTitle: userForm.roleTitle,
-        pin: userForm.pin,
         canDiscount: userForm.canDiscount,
         canRefund: userForm.canRefund,
         canManageInventory: userForm.canManageInventory,
       });
+      // updateUserPin hashea el PIN; updateUser nunca debe recibirlo en claro.
+      if (pinTouched) {
+        await updateUserPin(editingUser.id, userForm.pin);
+      }
       showToast(`Usuario ${userForm.name} actualizado`, 'success');
     } else {
       await addUser({
@@ -286,10 +291,6 @@ export const MasterPortalView: React.FC = () => {
       });
     }
     setIsNewUserModalOpen(false);
-  };
-
-  const togglePinVisibility = (userId: string) => {
-    setShowPinsMap((prev) => ({ ...prev, [userId]: !prev[userId] }));
   };
 
   return (
@@ -604,7 +605,6 @@ export const MasterPortalView: React.FC = () => {
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {filteredUsers.map((user) => {
-                    const isPinVisible = Boolean(showPinsMap[user.id]);
                     return (
                       <tr key={user.id} className="hover:bg-slate-50/70 transition-colors">
                         <td className="py-4 px-6">
@@ -643,17 +643,10 @@ export const MasterPortalView: React.FC = () => {
                         </td>
 
                         <td className="py-4 px-6">
+                          {/* Los PIN se guardan hasheados: no hay forma de mostrarlos. */}
                           <div className="inline-flex items-center gap-2 px-2.5 py-1 bg-slate-100 rounded-lg border border-slate-200 font-mono font-bold text-slate-800">
                             <Lock className="w-3.5 h-3.5 text-slate-400" />
-                            <span>{isPinVisible ? user.pin : '••••'}</span>
-                            <button
-                              type="button"
-                              onClick={() => togglePinVisibility(user.id)}
-                              className="text-slate-400 hover:text-slate-700 ml-1"
-                              title={isPinVisible ? 'Ocultar PIN' : 'Ver PIN'}
-                            >
-                              {isPinVisible ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                            </button>
+                            <span>••••</span>
                           </div>
                         </td>
 
@@ -986,14 +979,16 @@ export const MasterPortalView: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">PIN 4 Dígitos *</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    {editingUser ? 'Nuevo PIN (opcional)' : 'PIN 4 Dígitos *'}
+                  </label>
                   <input
-                    type="text"
+                    type="password"
                     maxLength={4}
-                    required
+                    required={!editingUser}
                     value={userForm.pin}
                     onChange={(e) => setUserForm({ ...userForm, pin: e.target.value.replace(/\D/g, '') })}
-                    placeholder="1234"
+                    placeholder={editingUser ? 'Dejar vacío para no cambiarlo' : '4 dígitos'}
                     className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-purple-500/20 text-center tracking-widest text-base"
                   />
                 </div>
