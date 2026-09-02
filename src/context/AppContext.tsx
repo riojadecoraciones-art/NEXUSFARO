@@ -682,12 +682,52 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           }
         }
       )
-      .subscribe();
+      // Tickets aparcados: si una caja deja un pedido en espera, la otra tiene
+      // que poder retomarlo. Sin esto sólo se veían los del arranque.
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'parked_tickets' },
+        async () => {
+          try {
+            const freshParked = await parkedTicketService.getAll();
+            setParkedTickets(freshParked);
+          } catch (e) {
+            console.error('Realtime parked tickets refresh error:', e);
+          }
+        }
+      )
+      // Entradas y retiros de efectivo: afectan el arqueo del turno, que es
+      // compartido entre las cajas abiertas.
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'cash_movements' },
+        async () => {
+          try {
+            const freshMovements = await cashShiftService.getAllMovements();
+            setCashMovements(freshMovements);
+          } catch (e) {
+            console.error('Realtime cash movements refresh error:', e);
+          }
+        }
+      )
+      .subscribe((status) => {
+        // Antes esto se suscribía en silencio: si el canal no conectaba, la app
+        // seguía andando con datos viejos y nadie se enteraba.
+        if (status === 'SUBSCRIBED') {
+          console.info('Sincronización en tiempo real activa.');
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          console.warn('Sincronización en tiempo real no disponible:', status);
+          showToast(
+            'Sin sincronización en vivo: los cambios de otras cajas pueden tardar en verse.',
+            'warning'
+          );
+        }
+      });
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [hasTerminalSession]);
+  }, [hasTerminalSession, showToast]);
 
   // Unread alerts count
   const unreadAlertsCount = useMemo(() => {
