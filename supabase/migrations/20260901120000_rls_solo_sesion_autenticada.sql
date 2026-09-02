@@ -18,7 +18,6 @@
 -- Si se aplica antes, la aplicación deja de ver los datos.
 -- ============================================================================
 
-begin;
 
 -- 1. Eliminar las policies abiertas -----------------------------------------
 drop policy if exists "Allow all operations for anon and authenticated" on public.users;
@@ -69,4 +68,3 @@ grant usage on schema public to authenticated;
 grant all on all tables in schema public to authenticated;
 grant all on all sequences in schema public to authenticated;
 
-commit;
