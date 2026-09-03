@@ -21,9 +21,9 @@ export const ParkedOrdersModal: React.FC<ParkedOrdersModalProps> = ({ isOpen, on
 
   if (!isOpen) return null;
 
-  const handleParkCurrent = (e: React.FormEvent) => {
+  const handleParkCurrent = async (e: React.FormEvent) => {
     e.preventDefault();
-    const success = parkCurrentTicket(customerName, notes);
+    const success = await parkCurrentTicket(customerName, notes);
     if (success) {
       setCustomerName('');
       setNotes('');

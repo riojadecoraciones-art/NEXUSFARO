@@ -38,7 +38,7 @@ export const CashRegisterView: React.FC = () => {
 
   const isOpen = activeShift && activeShift.status === 'ABIERTA';
 
-  const handleQuickMovement = (e: React.FormEvent) => {
+  const handleQuickMovement = async (e: React.FormEvent) => {
     e.preventDefault();
     const amount = parseFloat(movementAmount);
     if (isNaN(amount) || amount <= 0) {
@@ -50,7 +50,7 @@ export const CashRegisterView: React.FC = () => {
       return;
     }
 
-    const success = addCashMovement(movementType, amount, movementReason);
+    const success = await addCashMovement(movementType, amount, movementReason);
     if (success) {
       setMovementAmount('');
       setMovementReason('');

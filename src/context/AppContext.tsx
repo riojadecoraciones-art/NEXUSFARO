@@ -1480,7 +1480,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     }
 
-    const ticketNumber = `TK-${(sales.length + 892).toString().padStart(5, '0')}`;
+    // El número de ticket lo entrega la base (secuencia atómica). Se pide antes
+    // de tocar nada: si no hay conexión, la venta no arranca en vez de generar
+    // un número que podría chocar con el de otra caja.
+    let ticketNumber: string;
+    try {
+      ticketNumber = await saleService.getNextTicketNumber();
+    } catch (e) {
+      console.error('No se pudo obtener el número de ticket:', e);
+      showToast(
+        'No se pudo conectar con el servidor para numerar el ticket. Revisá la conexión e intentá de nuevo.',
+        'error'
+      );
+      return null;
+    }
+
     const timestamp = new Date().toISOString();
 
     const saleItems: SaleItem[] = cart.map((item) => {
@@ -1618,30 +1632,58 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const newTransferSales = activeShift.transferSales + transferIncrement;
     const newExpected = activeShift.initialCash + newCashSales + activeShift.totalIn - activeShift.totalOut;
 
-    // 3. PERSIST EVERYTHING ASYNCHRONOUSLY TO SUPABASE
+    // 3.a LA VENTA — camino crítico.
+    // Antes todo esto iba en un Promise.all cuyo catch sólo hacía console.error:
+    // la caja mostraba "Venta registrada", vaciaba el carrito y seguía, aunque
+    // no se hubiera guardado nada. Ahora, si la venta no se guarda, no hay venta:
+    // el carrito queda intacto para poder reintentar el cobro.
     try {
-      await Promise.all([
-        // Insert sale & items
-        saleService.create(newSale),
-        // Update product stocks in DB
-        ...cart.map((item) => {
-          const p = updatedProducts.find((x) => x.id === item.product.id);
-          return p ? productService.updateStock(p.id, p.stock) : Promise.resolve();
-        }),
-        // Insert stock movements in DB
-        ...newStockMovements.map((mov) => stockMovementService.create(mov)),
-        // Update active shift in DB
-        cashShiftService.updateShift(activeShift.id, {
-          cashSales: newCashSales,
-          cardSales: newCardSales,
-          transferSales: newTransferSales,
-          expectedCash: newExpected,
-        }),
-        // Insert any triggered alerts in DB
-        ...triggeredAlerts.map((alert) => appAlertService.create(alert)),
-      ]);
+      await saleService.create(newSale);
     } catch (dbErr) {
-      console.error('Error persisting sale to Supabase:', dbErr);
+      console.error('Error guardando la venta en Supabase:', dbErr);
+      showToast(
+        'LA VENTA NO SE GUARDÓ. No entregues el producto: revisá la conexión y volvé a cobrar.',
+        'error',
+        { title: 'Error al registrar la venta', isPersistent: true }
+      );
+      sounds.playErrorBeep();
+      return null;
+    }
+
+    // 3.b Efectos secundarios — la venta YA está registrada.
+    // Si algo de esto falla no se pierde la venta, pero el inventario o el
+    // arqueo pueden quedar desfasados, así que hay que avisarlo en vez de
+    // tragarse el error.
+    const efectosSecundarios = await Promise.allSettled([
+      // Descontar stock
+      ...cart.map((item) => {
+        const p = updatedProducts.find((x) => x.id === item.product.id);
+        return p ? productService.updateStock(p.id, p.stock) : Promise.resolve();
+      }),
+      // Registrar los movimientos de stock
+      ...newStockMovements.map((mov) => stockMovementService.create(mov)),
+      // Actualizar los totales del turno
+      cashShiftService.updateShift(activeShift.id, {
+        cashSales: newCashSales,
+        cardSales: newCardSales,
+        transferSales: newTransferSales,
+        expectedCash: newExpected,
+      }),
+      // Guardar las alertas de stock disparadas
+      ...triggeredAlerts.map((alert) => appAlertService.create(alert)),
+    ]);
+
+    const fallidos = efectosSecundarios.filter((r) => r.status === 'rejected');
+    if (fallidos.length > 0) {
+      console.error(
+        `La venta ${ticketNumber} se guardó, pero ${fallidos.length} operación(es) asociada(s) fallaron:`,
+        fallidos
+      );
+      showToast(
+        `La venta ${ticketNumber} quedó registrada, pero el stock o el arqueo pueden estar desactualizados. Revisá el inventario.`,
+        'warning',
+        { title: 'Venta guardada con advertencias', isPersistent: true }
+      );
     }
 
     // 4. Update React State

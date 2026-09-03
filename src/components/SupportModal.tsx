@@ -100,11 +100,11 @@ export const SupportModal: React.FC = () => {
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       const content = event.target?.result as string;
       if (content) {
         setImportJsonText(content);
-        const ok = importSystemBackup(content);
+        const ok = await importSystemBackup(content);
         if (ok) {
           setIsImporting(false);
         }

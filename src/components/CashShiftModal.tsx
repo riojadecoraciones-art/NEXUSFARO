@@ -49,21 +49,21 @@ export const CashShiftModal: React.FC<CashShiftModalProps> = ({ isOpen, onClose 
 
   const isShiftOpen = activeShift && activeShift.status === 'ABIERTA';
 
-  const handleOpenShift = (e: React.FormEvent) => {
+  const handleOpenShift = async (e: React.FormEvent) => {
     e.preventDefault();
     const amount = parseFloat(initialCashInput);
     if (isNaN(amount) || amount < 0) {
       showToast('Ingresa un monto válido para el fondo inicial', 'error');
       return;
     }
-    const success = openCashShift(amount, openNotes);
+    const success = await openCashShift(amount, openNotes);
     if (success) {
       setActiveTab('status');
       onClose();
     }
   };
 
-  const handleAddMovement = (e: React.FormEvent) => {
+  const handleAddMovement = async (e: React.FormEvent) => {
     e.preventDefault();
     const amount = parseFloat(movementAmount);
     if (isNaN(amount) || amount <= 0) {
@@ -75,7 +75,7 @@ export const CashShiftModal: React.FC<CashShiftModalProps> = ({ isOpen, onClose 
       return;
     }
 
-    const success = addCashMovement(movementType, amount, movementReason);
+    const success = await addCashMovement(movementType, amount, movementReason);
     if (success) {
       setMovementAmount('');
       setMovementReason('');
@@ -83,7 +83,7 @@ export const CashShiftModal: React.FC<CashShiftModalProps> = ({ isOpen, onClose 
     }
   };
 
-  const handleCloseShift = (e: React.FormEvent) => {
+  const handleCloseShift = async (e: React.FormEvent) => {
     e.preventDefault();
     const counted = parseFloat(countedCashInput);
     if (isNaN(counted) || counted < 0) {
@@ -91,7 +91,7 @@ export const CashShiftModal: React.FC<CashShiftModalProps> = ({ isOpen, onClose 
       return;
     }
 
-    const success = closeCashShift(counted, closeNotes);
+    const success = await closeCashShift(counted, closeNotes);
     if (success) {
       setCountedCashInput('');
       setCloseNotes('');

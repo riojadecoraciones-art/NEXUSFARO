@@ -230,15 +230,15 @@ export const InventoryView: React.FC = () => {
     if (isAdjustModalOpen) setIsAdjustModalOpen(false);
   };
 
-  const handleAddCategorySubmit = (e: React.FormEvent) => {
+  const handleAddCategorySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (addCategory(newCategoryName)) {
+    if (await addCategory(newCategoryName)) {
       setNewCategoryName('');
     }
   };
 
-  const handleSaveRenameCategory = (oldName: string) => {
-    if (updateCategory(oldName, editingCategoryNewName)) {
+  const handleSaveRenameCategory = async (oldName: string) => {
+    if (await updateCategory(oldName, editingCategoryNewName)) {
       setEditingCategoryOldName(null);
       setEditingCategoryNewName('');
     }

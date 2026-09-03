@@ -50,10 +50,10 @@ export const HistoryView: React.FC = () => {
     setIsRefundModalOpen(true);
   };
 
-  const handleConfirmRefund = (e: React.FormEvent) => {
+  const handleConfirmRefund = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedSale) return;
-    const success = refundSale(selectedSale.id, refundReason);
+    const success = await refundSale(selectedSale.id, refundReason);
     if (success) {
       setIsRefundModalOpen(false);
       setSelectedSale(null);

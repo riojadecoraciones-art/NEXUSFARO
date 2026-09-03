@@ -588,6 +588,28 @@ export const saleService = {
     }));
   },
 
+  /**
+   * Pide el próximo número de ticket a la base.
+   *
+   * Antes se calculaba en el navegador como `TK-${sales.length + 892}`, a
+   * partir de las ventas que esa terminal tenía en memoria: con dos cajas
+   * abiertas, ambas generaban el mismo número. Ahora lo entrega una secuencia
+   * de Postgres, que es atómica.
+   */
+  async getNextTicketNumber(): Promise<string> {
+    const { data, error } = await supabase.rpc('siguiente_numero_ticket');
+
+    if (error) {
+      console.error('Error obteniendo el número de ticket:', error);
+      throw error;
+    }
+    if (typeof data !== 'string' || !data) {
+      throw new Error('La base no devolvió un número de ticket válido.');
+    }
+
+    return data;
+  },
+
   async create(sale: Sale): Promise<Sale> {
     // 1. Insert Sale record
     const { data: insertedSale, error: saleError } = await supabase
