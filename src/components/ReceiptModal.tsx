@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import confetti from 'canvas-confetti';
 import { Printer, Mail, PlusCircle, CheckCircle, X } from 'lucide-react';
+import { useApp } from '../context/AppContext';
 import { Sale } from '../types';
 
 interface ReceiptModalProps {
@@ -16,6 +17,8 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
   onClose,
   onNewSale,
 }) => {
+  const { storeInfo } = useApp();
+
   useEffect(() => {
     if (isOpen && sale) {
       confetti({
@@ -58,9 +61,16 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
         {/* Thermal Ticket simulation */}
         <div className="p-6 bg-slate-50 font-mono text-xs text-slate-800 space-y-4 border-b border-slate-200">
           <div className="text-center space-y-1 pb-3 border-b border-dashed border-slate-300">
-            <div className="font-extrabold text-base tracking-wider text-slate-900">FARO POS • SUCURSAL 1</div>
-            <div className="text-[11px] text-slate-500">Av. Central 1234, Ciudad</div>
-            <div className="text-[10px] text-slate-400">CUIT: 30-71829384-9 • IVA Responsable Inscripto</div>
+            <div className="font-extrabold text-base tracking-wider text-slate-900">
+              {storeInfo.storeName}
+              {storeInfo.branchName ? ` • ${storeInfo.branchName}` : ''}
+            </div>
+            {storeInfo.address && (
+              <div className="text-[11px] text-slate-500">{storeInfo.address}</div>
+            )}
+            {storeInfo.cuit && (
+              <div className="text-[10px] text-slate-400">CUIT: {storeInfo.cuit}</div>
+            )}
           </div>
 
           <div className="flex justify-between text-[11px] text-slate-600">
@@ -141,9 +151,11 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
             )}
           </div>
 
-          <div className="text-center pt-2 text-[10px] text-slate-400">
-            ¡Gracias por su compra! Conserve este ticket.
-          </div>
+          {storeInfo.receiptFooter && (
+            <div className="text-center pt-2 text-[10px] text-slate-400">
+              {storeInfo.receiptFooter}
+            </div>
+          )}
         </div>
 
         {/* Action Buttons */}
