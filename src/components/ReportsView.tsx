@@ -1,16 +1,20 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useApp } from '../context/AppContext';
+import { DateRangeFilter } from './DateRangeFilter';
+import {
+  DateRangeValue,
+  DEFAULT_DATE_RANGE,
+  DATE_RANGE_PRESET_LABELS,
+  computeDateRange,
+  isTimestampInRange,
+} from '../utils/dateRange';
 import {
   BarChart3,
-  TrendingUp,
   Download,
-  Calendar,
-  DollarSign,
   PieChart,
   CreditCard,
   Banknote,
   QrCode,
-  Layers,
   ArrowUpRight,
   ShieldAlert,
 } from 'lucide-react';
@@ -20,7 +24,17 @@ export const ReportsView: React.FC = () => {
 
   const isOwner = currentUser?.role === 'DUEÑO';
 
-  const completedSales = useMemo(() => sales.filter((s) => s.status === 'COMPLETADA'), [sales]);
+  // Antes esto era un acumulado histórico eterno: no había ningún filtro de
+  // fecha, pese a que el texto de "Rendimiento por Cajero" ya hablaba de
+  // "este período" sin que ese período existiera.
+  const [dateRangeValue, setDateRangeValue] = useState<DateRangeValue>(DEFAULT_DATE_RANGE);
+  const dateRange = useMemo(() => computeDateRange(dateRangeValue), [dateRangeValue]);
+  const periodLabel = DATE_RANGE_PRESET_LABELS[dateRangeValue.preset].toLowerCase();
+
+  const completedSales = useMemo(
+    () => sales.filter((s) => s.status === 'COMPLETADA' && isTimestampInRange(s.timestamp, dateRange)),
+    [sales, dateRange]
+  );
 
   // Overall Financials
   const totalRevenue = useMemo(() => completedSales.reduce((sum, s) => sum + s.total, 0), [completedSales]);
@@ -102,6 +116,7 @@ export const ReportsView: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2.5 shrink-0">
+          <DateRangeFilter value={dateRangeValue} onChange={setDateRangeValue} />
           <button
             onClick={handleExport}
             className="flex items-center gap-2 px-4 py-2.5 bg-slate-950 hover:bg-slate-900 text-white font-bold text-xs rounded-xl shadow-md transition-all"
@@ -120,7 +135,7 @@ export const ReportsView: React.FC = () => {
             ${totalRevenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </div>
           <span className="text-xs text-emerald-700 font-semibold mt-1 inline-block">
-            {completedSales.length} transacciones registradas
+            {completedSales.length} transacciones — {periodLabel}
           </span>
         </div>
 

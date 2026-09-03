@@ -1,5 +1,15 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useApp } from '../context/AppContext';
+import { DateRangeFilter } from './DateRangeFilter';
+import {
+  DateRangeValue,
+  DEFAULT_DATE_RANGE,
+  DATE_RANGE_PRESET_LABELS,
+  DATE_RANGE_PHRASE_DE,
+  DATE_RANGE_PHRASE_EN,
+  computeDateRange,
+  isTimestampInRange,
+} from '../utils/dateRange';
 import {
   TrendingUp,
   Receipt,
@@ -7,7 +17,6 @@ import {
   Banknote,
   AlertTriangle,
   RotateCw,
-  Calendar,
   SlidersHorizontal,
   Radio,
   Package,
@@ -21,8 +30,17 @@ import { formatARS } from '../utils/currency';
 export const DashboardView: React.FC = () => {
   const { sales, activeShift, products, alerts, users, currentUser, setActiveView, showToast } = useApp();
 
-  // Dynamic calculations from real sales
-  const completedSales = useMemo(() => sales.filter((s) => s.status === 'COMPLETADA'), [sales]);
+  // Antes las métricas sumaban TODO el histórico de ventas aunque el chip del
+  // header dijera "Hoy": era decorativo, no filtraba nada. Ahora sí filtra.
+  const [dateRangeValue, setDateRangeValue] = useState<DateRangeValue>(DEFAULT_DATE_RANGE);
+  const dateRange = useMemo(() => computeDateRange(dateRangeValue), [dateRangeValue]);
+  const periodLabel = DATE_RANGE_PRESET_LABELS[dateRangeValue.preset].toLowerCase();
+
+  // Dynamic calculations from real sales, acotadas al período seleccionado
+  const completedSales = useMemo(
+    () => sales.filter((s) => s.status === 'COMPLETADA' && isTimestampInRange(s.timestamp, dateRange)),
+    [sales, dateRange]
+  );
 
   const totalSalesAmount = useMemo(() => {
     return completedSales.reduce((sum, s) => sum + s.total, 0);
@@ -106,10 +124,7 @@ export const DashboardView: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2.5 shrink-0">
-          <div className="flex items-center gap-2 px-3.5 py-2 bg-white border border-slate-200 text-xs font-bold text-slate-700 rounded-xl shadow-xs">
-            <Calendar className="w-4 h-4 text-slate-500" />
-            <span>Hoy</span>
-          </div>
+          <DateRangeFilter value={dateRangeValue} onChange={setDateRangeValue} />
           <button
             onClick={() => showToast('Métricas sincronizadas en vivo', 'info')}
             className="p-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 rounded-xl shadow-xs transition-colors"
@@ -126,7 +141,7 @@ export const DashboardView: React.FC = () => {
         {/* Card 1: Ventas del Día */}
         <div className="p-5 bg-white rounded-2xl border border-slate-200 shadow-xs relative overflow-hidden flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Ventas del Día</span>
+            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Ventas del Período</span>
             <TrendingUp className="w-4 h-4 text-emerald-600" />
           </div>
           <div className="my-3">
@@ -151,7 +166,9 @@ export const DashboardView: React.FC = () => {
             </div>
           </div>
           <div className="text-xs font-medium text-slate-500">
-            {transactionsCount > 0 ? 'Calculado en base a ventas de hoy' : 'Sin ventas hoy'}
+            {transactionsCount > 0
+              ? `Calculado en base a ventas ${DATE_RANGE_PHRASE_DE[dateRangeValue.preset]}`
+              : `Sin ventas ${DATE_RANGE_PHRASE_EN[dateRangeValue.preset]}`}
           </div>
         </div>
 
@@ -209,7 +226,7 @@ export const DashboardView: React.FC = () => {
           <div className="flex items-center justify-between mb-4">
             <div>
               <h3 className="font-extrabold text-base text-slate-900">Ventas por Hora</h3>
-              <p className="text-xs text-slate-400 mt-0.5">Distribución horaria en tiempo real</p>
+              <p className="text-xs text-slate-400 mt-0.5">Distribución horaria — {periodLabel}</p>
             </div>
           </div>
 
@@ -252,7 +269,7 @@ export const DashboardView: React.FC = () => {
           <div className="flex items-center justify-between mb-4">
             <div>
               <h3 className="font-extrabold text-base text-slate-900">Top Productos</h3>
-              <p className="text-xs text-slate-400 mt-0.5">Más vendidos del día</p>
+              <p className="text-xs text-slate-400 mt-0.5">Más vendidos — {periodLabel}</p>
             </div>
             <SlidersHorizontal className="w-4 h-4 text-slate-400" />
           </div>
@@ -261,7 +278,9 @@ export const DashboardView: React.FC = () => {
             {topProducts.length === 0 ? (
               <div className="py-12 flex flex-col items-center justify-center text-center text-slate-400">
                 <Package className="w-10 h-10 text-slate-300 mb-2" />
-                <p className="font-semibold text-slate-600 text-xs">Sin ventas registradas hoy</p>
+                <p className="font-semibold text-slate-600 text-xs">
+                  Sin ventas registradas {DATE_RANGE_PHRASE_EN[dateRangeValue.preset]}
+                </p>
                 <p className="text-[11px] text-slate-400 max-w-[200px] mt-0.5">
                   Los productos más vendidos aparecerán aquí al facturar.
                 </p>
