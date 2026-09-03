@@ -8,6 +8,8 @@ import {
   computeDateRange,
   isTimestampInRange,
 } from '../utils/dateRange';
+import { buildCsv, downloadCsv } from '../utils/csv';
+import { PaymentMethodType } from '../types';
 import {
   BarChart3,
   Download,
@@ -97,8 +99,45 @@ export const ReportsView: React.FC = () => {
     );
   }
 
+  const PAYMENT_METHOD_LABELS: Record<PaymentMethodType, string> = {
+    EFECTIVO: 'Efectivo',
+    TARJETA: 'Tarjeta',
+    TRANSFERENCIA_QR: 'Transferencia/QR',
+    MIXTO: 'Mixto',
+  };
+
   const handleExport = () => {
-    showToast('Reporte generado y descargado en CSV', 'success');
+    if (completedSales.length === 0) {
+      showToast('No hay ventas en el período seleccionado para exportar', 'warning');
+      return;
+    }
+
+    const headers = ['Ticket', 'Fecha', 'Hora', 'Cajero', 'Método de Pago', 'Subtotal', 'Descuento', 'IVA', 'Total'];
+    const rows = completedSales.map((s) => {
+      const d = new Date(s.timestamp);
+      return [
+        s.ticketNumber,
+        d.toLocaleDateString('es-AR'),
+        d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }),
+        s.cashierName,
+        PAYMENT_METHOD_LABELS[s.paymentMethod] || s.paymentMethod,
+        s.subtotal,
+        s.discountTotal,
+        s.tax,
+        s.total,
+      ];
+    });
+
+    const ymd = (ms: number) => {
+      const d = new Date(ms);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    };
+
+    downloadCsv(
+      `ventas_${ymd(dateRange.startMs)}_a_${ymd(dateRange.endMs)}.csv`,
+      buildCsv(headers, rows)
+    );
+    showToast(`Reporte exportado: ${completedSales.length} ventas`, 'success');
   };
 
   return (
