@@ -46,3 +46,49 @@ o pegá el contenido del `.sql` en Supabase → SQL Editor.
   identifica quién está en la caja; la sesión de Supabase es la que autoriza el
   acceso a los datos.
 - La anon key deja de servir por sí sola: sin sesión, la base no devuelve nada.
+
+## Enviar el comprobante por email
+
+El botón "Enviar Email" del comprobante llama a la Edge Function
+`send-receipt-email` (ya desplegada), que usa [Resend](https://resend.com/)
+para mandar el correo. La API key de Resend no puede vivir en el navegador —
+cualquiera que abriera la consola (F12) podría leerla y mandar correo en
+nombre del negocio — así que el envío pasa por el servidor.
+
+**Sin este paso, el botón responde "El envío de emails no está configurado
+en el servidor todavía."** — no rompe nada, simplemente no manda el correo.
+
+### 1. Crear la cuenta y la API key
+
+1. Creá una cuenta en [resend.com](https://resend.com/) (nivel gratis: 3.000
+   emails/mes, 100/día).
+2. [Generá una API key](https://resend.com/api-keys).
+
+### 2. Cargar el secreto en Supabase
+
+Dashboard del proyecto → **Edge Functions → Secrets** → *Add secret*:
+
+| Nombre | Valor |
+| --- | --- |
+| `RESEND_API_KEY` | la clave que generaste en el paso anterior |
+
+Con sólo esto el envío ya funciona, pero **limitado**: sin un dominio propio
+verificado, Resend sólo entrega a la casilla con la que creaste la cuenta —
+no a clientes reales. Sirve para probar, no para producción.
+
+### 3. (Para mandarle a clientes reales) Verificar un dominio propio
+
+1. [Agregá y verificá tu dominio](https://resend.com/domains) en Resend
+   (son un par de registros DNS; la mayoría de los dominios de La Rioja se
+   verifican en minutos si tenés acceso al panel del dominio).
+2. Agregá un segundo secreto en Supabase:
+
+   | Nombre | Valor |
+   | --- | --- |
+   | `RESEND_FROM_EMAIL` | `Rioja Decoraciones <comprobantes@tudominio.com>` |
+
+   Sin este secreto, el remitente queda en la dirección de prueba de Resend
+   (`onboarding@resend.dev`), que sólo entrega a tu propia casilla.
+
+No hace falta volver a desplegar la función después de cargar los secretos:
+Supabase se los inyecta en la próxima invocación.

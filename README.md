@@ -59,8 +59,9 @@ configurada, el modo maestro queda deshabilitado.
 
 ## Base de datos
 
-Ver [`supabase/README.md`](supabase/README.md) para las migraciones y el estado
-de las policies de RLS.
+Ver [`supabase/README.md`](supabase/README.md) para las migraciones, el estado
+de las policies de RLS, y cómo activar el envío de comprobantes por email
+(botón "Enviar Email" del ticket — requiere una cuenta de Resend).
 
 ## Scripts
 

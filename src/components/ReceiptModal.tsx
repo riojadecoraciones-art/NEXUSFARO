@@ -1,6 +1,6 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import confetti from 'canvas-confetti';
-import { Printer, Mail, PlusCircle, CheckCircle, X } from 'lucide-react';
+import { Printer, Mail, PlusCircle, CheckCircle, X, RefreshCw, Send } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { Sale } from '../types';
 
@@ -17,7 +17,11 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
   onClose,
   onNewSale,
 }) => {
-  const { storeInfo } = useApp();
+  const { storeInfo, sendReceiptEmail, showToast } = useApp();
+
+  const [isEmailFormOpen, setIsEmailFormOpen] = useState<boolean>(false);
+  const [emailAddress, setEmailAddress] = useState<string>('');
+  const [isSendingEmail, setIsSendingEmail] = useState<boolean>(false);
 
   useEffect(() => {
     if (isOpen && sale) {
@@ -33,6 +37,25 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
 
   const handlePrint = () => {
     window.print();
+  };
+
+  const handleSendEmail = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanEmail = emailAddress.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      showToast('Ingresá un email válido', 'error');
+      return;
+    }
+
+    setIsSendingEmail(true);
+    const res = await sendReceiptEmail(cleanEmail, sale);
+    setIsSendingEmail(false);
+
+    showToast(res.message, res.success ? 'success' : 'error');
+    if (res.success) {
+      setIsEmailFormOpen(false);
+      setEmailAddress('');
+    }
   };
 
   return (
@@ -169,13 +192,43 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
               <span>Imprimir</span>
             </button>
             <button
-              onClick={() => alert(`Ticket ${sale.ticketNumber} enviado por email al cliente`)}
-              className="py-2.5 px-3 border border-slate-200 hover:bg-slate-50 rounded-xl font-bold text-xs text-slate-700 flex items-center justify-center gap-2 transition-colors"
+              onClick={() => setIsEmailFormOpen((v) => !v)}
+              className={`py-2.5 px-3 border rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-colors ${
+                isEmailFormOpen
+                  ? 'border-blue-300 bg-blue-50 text-blue-700'
+                  : 'border-slate-200 hover:bg-slate-50 text-slate-700'
+              }`}
             >
               <Mail className="w-4 h-4" />
               <span>Enviar Email</span>
             </button>
           </div>
+
+          {isEmailFormOpen && (
+            <form onSubmit={handleSendEmail} className="flex items-center gap-2 pt-1">
+              <input
+                type="email"
+                required
+                autoFocus
+                value={emailAddress}
+                onChange={(e) => setEmailAddress(e.target.value)}
+                placeholder="email@cliente.com"
+                className="flex-1 min-w-0 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-colors"
+              />
+              <button
+                type="submit"
+                disabled={isSendingEmail}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-colors shrink-0 flex items-center gap-1.5"
+              >
+                {isSendingEmail ? (
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Send className="w-3.5 h-3.5" />
+                )}
+                <span>Enviar</span>
+              </button>
+            </form>
+          )}
 
           <button
             onClick={() => {
