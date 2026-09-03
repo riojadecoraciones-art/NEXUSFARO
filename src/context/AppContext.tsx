@@ -19,7 +19,7 @@ import {
   MasterAuthConfig,
   StoreTenant,
 } from '../types';
-import { SEED_USERS, SEED_PRODUCTS, SEED_SALES, SEED_ALERTS, SEED_TENANTS } from '../mockData';
+import { SEED_USERS, SEED_PRODUCTS, SEED_SALES, SEED_ALERTS } from '../mockData';
 import { sounds } from '../utils/soundEffects';
 import { hashSecret, isHashed, verifySecret } from '../utils/crypto';
 import { supabase } from '../lib/supabase';
@@ -222,7 +222,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Usuario preseleccionado en la pantalla de PIN al pedir un cambio de sesión.
   const [pendingSwitchUserId, setPendingSwitchUserId] = useState<string | null>(null);
   const [activeView, setActiveViewRaw] = useState<ActiveView>('pos');
-  const [storeTenants, setStoreTenants] = useState<StoreTenant[]>(SEED_TENANTS);
+  // Sin comercio de ejemplo: una instalación nueva no tiene clientes
+  // multi-tenant todavía, y no hay que fabricar uno para que la pantalla
+  // "se vea llena".
+  const [storeTenants, setStoreTenants] = useState<StoreTenant[]>([]);
   const [isImpersonating, setIsImpersonating] = useState<boolean>(false);
 
   // 2. Inventory & Products
@@ -425,9 +428,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setStoreInfo(fetchedSettings);
       }
 
-      if (fetchedStores && fetchedStores.length > 0) {
-        setStoreTenants(fetchedStores);
-      }
+      // A diferencia de `users` (que necesita al menos una cuenta para poder
+      // iniciar sesión), una lista de comercios vacía es un estado válido:
+      // se refleja tal cual, sin el guard `length > 0` que antes dejaba a
+      // storeTenants trabado en el seed falso para siempre.
+      setStoreTenants(fetchedStores || []);
 
       if (fetchedUsers && fetchedUsers.length > 0) {
         setUsers(fetchedUsers);

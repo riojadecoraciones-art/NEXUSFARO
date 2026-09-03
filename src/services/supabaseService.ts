@@ -1096,37 +1096,12 @@ export const storeTenantService = {
       return [];
     }
 
-    if (!data || data.length === 0) {
-      // Seed default initial store
-      const defaultStore: StoreTenant = {
-        id: 'store-1',
-        name: 'Rioja Decoraciones',
-        branchName: 'Sucursal Principal',
-        ownerName: 'Dueño / Administrador',
-        ownerEmail: 'riojadecoraciones@gmail.com',
-        ownerPhone: '+54 380 442-1234',
-        cuit: '30-71829384-9',
-        address: 'Av. San Martín 450, La Rioja',
-        status: 'ACTIVO',
-        createdAt: new Date().toISOString(),
-      };
-      try {
-        await supabase.from('stores').insert({
-          id: defaultStore.id,
-          name: defaultStore.name,
-          branch_name: defaultStore.branchName,
-          owner_name: defaultStore.ownerName,
-          owner_email: defaultStore.ownerEmail,
-          owner_phone: defaultStore.ownerPhone,
-          cuit: defaultStore.cuit,
-          address: defaultStore.address,
-          status: defaultStore.status,
-        });
-      } catch (e) {
-        console.warn('Could not insert default store:', e);
-      }
-      return [defaultStore];
-    }
+    // Antes, si la tabla estaba vacía, se insertaba un comercio de ejemplo
+    // ("Rioja Decoraciones", CUIT y dirección inventados) como si fuera un
+    // cliente real dado de alta. Un negocio recién instalado no tiene
+    // clientes todavía: mostrar la lista vacía es lo correcto, no fabricar
+    // uno.
+    if (!data || data.length === 0) return [];
 
     return data.map((row) => ({
       id: row.id,

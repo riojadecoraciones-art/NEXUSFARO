@@ -123,7 +123,7 @@ export const MasterPortalView: React.FC = () => {
       .reduce((sum, s) => sum + (s.total || 0), 0);
   }, [sales]);
 
-  const totalStoresCount = (storeTenants && storeTenants.length > 0) ? storeTenants.length : 1;
+  const totalStoresCount = storeTenants.length;
   const totalOwnersCount = (users || []).filter((u) => u && u.role === 'DUEÑO').length;
   const totalCashiersCount = (users || []).filter((u) => u && u.role === 'CAJERO').length;
 
@@ -321,7 +321,8 @@ export const MasterPortalView: React.FC = () => {
           <div className="flex items-center gap-3">
             <button
               onClick={() => {
-                impersonateStore(storeTenants[0]?.id || 'store-1');
+                // Sólo hay algo para auditar si existe al menos un comercio dado de alta.
+                if (storeTenants[0]) impersonateStore(storeTenants[0].id);
                 setActiveView('pos');
               }}
               className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl shadow-md transition-all flex items-center gap-2"
@@ -456,6 +457,19 @@ export const MasterPortalView: React.FC = () => {
         {/* TAB 1: NEGOCIOS & AUDITORÍA DE NÚMEROS */}
         {activeTab === 'stores' && (
           <div className="space-y-6">
+            {filteredStores.length === 0 ? (
+              <div className="py-16 flex flex-col items-center justify-center text-center bg-white rounded-2xl border border-dashed border-slate-300">
+                <Building2 className="w-10 h-10 text-slate-300 mb-3" />
+                <p className="font-bold text-slate-700 text-sm">
+                  {storeTenants.length === 0 ? 'Todavía no hay comercios dados de alta' : 'Sin resultados para esa búsqueda'}
+                </p>
+                <p className="text-xs text-slate-400 max-w-xs mt-1">
+                  {storeTenants.length === 0
+                    ? 'Usá "Nuevo Negocio" para registrar el primer comercio cliente.'
+                    : 'Probá con otro nombre, CUIT o email.'}
+                </p>
+              </div>
+            ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {filteredStores.map((store) => {
                 return (
@@ -564,6 +578,7 @@ export const MasterPortalView: React.FC = () => {
                 );
               })}
             </div>
+            )}
           </div>
         )}
 

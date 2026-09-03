@@ -1,4 +1,4 @@
-import { User, Product, Sale, CashShift, CashMovement, AppAlert, StoreTenant } from './types';
+import { User, Product, Sale, CashShift, CashMovement, AppAlert } from './types';
 
 export const SEED_USERS: User[] = [
   {
@@ -14,21 +14,6 @@ export const SEED_USERS: User[] = [
     canDiscount: true,
     canRefund: true,
     canManageInventory: true,
-  },
-];
-
-export const SEED_TENANTS: StoreTenant[] = [
-  {
-    id: 'tenant-1',
-    name: 'NEXUS FARO - Rioja Decoraciones',
-    branchName: 'Director Superior',
-    ownerName: 'Dueño / Administrador',
-    ownerEmail: 'riojadecoraciones@gmail.com',
-    ownerPhone: '+54 380 4123456',
-    cuit: '20-12345678-9',
-    address: 'San Nicolás de Bari 450, La Rioja',
-    status: 'ACTIVO',
-    createdAt: new Date().toISOString(),
   },
 ];
 
