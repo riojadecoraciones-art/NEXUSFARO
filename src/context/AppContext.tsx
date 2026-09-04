@@ -2450,18 +2450,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const loginMasterSuperAdmin = loginMaster;
 
+  // Antes esto sólo tocaba useState: crear/editar/borrar un comercio se
+  // perdía al refrescar la página. storeTenantService ya existía completo
+  // contra la tabla real `stores` — nunca se llamaba desde acá.
   const createStoreTenant = async (tenantData: Omit<StoreTenant, 'id' | 'createdAt'>): Promise<StoreTenant> => {
-    const newTenant: StoreTenant = {
-      ...tenantData,
-      id: `tenant-${Date.now()}`,
-      createdAt: new Date().toISOString(),
-    };
-    setStoreTenants((prev) => [newTenant, ...prev]);
-    showToast(`Comercio "${newTenant.name}" creado con éxito`, 'success');
-    return newTenant;
+    try {
+      const created = await storeTenantService.create(tenantData);
+      setStoreTenants((prev) => [created, ...prev]);
+      showToast(`Comercio "${created.name}" creado con éxito`, 'success');
+      return created;
+    } catch (e) {
+      console.error('Error creating store tenant in Supabase:', e);
+      showToast('Error al guardar el comercio en la base de datos', 'error');
+      throw e;
+    }
   };
 
   const updateStoreTenant = async (id: string, updates: Partial<StoreTenant>): Promise<void> => {
+    try {
+      await storeTenantService.update(id, updates);
+    } catch (e) {
+      console.error('Error updating store tenant in Supabase:', e);
+      showToast('Error al actualizar el comercio en la base de datos', 'error');
+      return;
+    }
+
     setStoreTenants((prev) =>
       prev.map((t) => (t.id === id ? { ...t, ...updates } : t))
     );
@@ -2469,6 +2482,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const deleteStoreTenant = async (id: string): Promise<void> => {
+    try {
+      await storeTenantService.delete(id);
+    } catch (e) {
+      console.error('Error deleting store tenant in Supabase:', e);
+      showToast('Error al eliminar el comercio en la base de datos', 'error');
+      return;
+    }
+
     setStoreTenants((prev) => prev.filter((t) => t.id !== id));
     showToast('Comercio eliminado', 'info');
   };

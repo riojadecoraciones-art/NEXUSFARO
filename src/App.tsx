@@ -25,7 +25,7 @@ import { SupportModal } from './components/SupportModal';
 import { MasterAuthModal } from './components/MasterAuthModal';
 import { MasterPortalView } from './components/MasterPortalView';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { Wrench, ArrowRight } from 'lucide-react';
+import { Wrench, ArrowRight, LogOut } from 'lucide-react';
 
 const MainLayout: React.FC = () => {
   const {
@@ -37,6 +37,8 @@ const MainLayout: React.FC = () => {
     storeInfo,
     hasTerminalSession,
     isCheckingTerminalSession,
+    isImpersonating,
+    exitImpersonation,
   } = useApp();
   const [isCashModalOpen, setIsCashModalOpen] = useState<boolean>(false);
 
@@ -96,6 +98,28 @@ const MainLayout: React.FC = () => {
             >
               <span>Abrir Herramientas de Soporte</span>
               <ArrowRight className="w-3 h-3" />
+            </button>
+          </div>
+        )}
+
+        {/* Antes "Asistir a este Negocio" no tenía vuelta: exitImpersonation
+            ya existía en el contexto pero ningún componente lo llamaba, y
+            ningún indicador distinguía "estás auditando otro comercio" de un
+            modo soporte cualquiera. */}
+        {isImpersonating && (
+          <div className="bg-indigo-600 text-white px-4 py-1.5 flex items-center justify-between text-xs font-bold shrink-0 shadow-sm z-30">
+            <div className="flex items-center gap-2">
+              <Wrench className="w-4 h-4" />
+              <span>
+                🔍 MODO AUDITORÍA — Viendo <strong>{storeInfo?.storeName}</strong> como soporte
+              </span>
+            </div>
+            <button
+              onClick={exitImpersonation}
+              className="px-2.5 py-0.5 bg-white/15 hover:bg-white/25 text-white rounded-md text-[11px] font-bold transition-colors flex items-center gap-1"
+            >
+              <LogOut className="w-3 h-3" />
+              <span>Salir al Portal Maestro</span>
             </button>
           </div>
         )}

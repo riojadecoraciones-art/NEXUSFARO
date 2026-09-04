@@ -353,7 +353,7 @@ export const MasterPortalView: React.FC = () => {
               <TrendingUp className="w-6 h-6" />
             </div>
             <div>
-              <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">Facturación Global</div>
+              <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">Facturación (tu comercio)</div>
               <div className="text-2xl font-black text-slate-900 mt-0.5">{formatARS(totalRevenue)}</div>
               <div className="text-[11px] text-emerald-600 font-semibold mt-0.5">{sales.length} ventas procesadas</div>
             </div>
@@ -364,7 +364,7 @@ export const MasterPortalView: React.FC = () => {
               <Package className="w-6 h-6" />
             </div>
             <div>
-              <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">Catálogo de Productos</div>
+              <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">Catálogo (tu comercio)</div>
               <div className="text-2xl font-black text-slate-900 mt-0.5">{products.length}</div>
               <div className="text-[11px] text-purple-600 font-semibold mt-0.5">Artículos administrados</div>
             </div>
@@ -375,7 +375,7 @@ export const MasterPortalView: React.FC = () => {
               <Users className="w-6 h-6" />
             </div>
             <div>
-              <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">Dueños & Empleados</div>
+              <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">Dueños & Empleados (tu comercio)</div>
               <div className="text-2xl font-black text-slate-900 mt-0.5">{users.length}</div>
               <div className="text-[11px] text-amber-700 font-semibold mt-0.5">{totalOwnersCount} dueños • {totalCashiersCount} cajeros</div>
             </div>
@@ -528,16 +528,16 @@ export const MasterPortalView: React.FC = () => {
                         )}
                       </div>
 
-                      {/* Live Store Numbers & Health */}
-                      <div className="grid grid-cols-2 gap-3 pt-1 border-t border-slate-100">
-                        <div className="p-2.5 bg-emerald-50/60 rounded-xl border border-emerald-100">
-                          <div className="text-[10px] font-bold text-emerald-800 uppercase">Facturación Total</div>
-                          <div className="text-sm font-black text-emerald-950 mt-0.5">{formatARS(totalRevenue)}</div>
-                        </div>
-                        <div className="p-2.5 bg-blue-50/60 rounded-xl border border-blue-100">
-                          <div className="text-[10px] font-bold text-blue-800 uppercase">Catálogo & Stock</div>
-                          <div className="text-sm font-black text-blue-950 mt-0.5">{products.length} productos</div>
-                        </div>
+                      {/* Los números por comercio (facturación, catálogo) requieren un
+                          reporte cross-tenant real, todavía no construido: esta sesión
+                          sólo tiene acceso a los datos de su propio comercio por diseño
+                          (RLS), así que mostrar acá cualquier agregado sería mostrar el
+                          mismo número repetido en todas las cards, sin distinguir cuál
+                          es cuál. */}
+                      <div className="pt-1 border-t border-slate-100">
+                        <p className="text-[11px] text-slate-400 text-center py-1">
+                          Reportes por comercio: próximamente
+                        </p>
                       </div>
                     </div>
 

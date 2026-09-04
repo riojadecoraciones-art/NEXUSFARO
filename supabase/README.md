@@ -92,3 +92,82 @@ no a clientes reales. Sirve para probar, no para producción.
 
 No hace falta volver a desplegar la función después de cargar los secretos:
 Supabase se los inyecta en la próxima invocación.
+
+## `20260904120000_multi_tenant_store_id.sql`
+
+Convierte la base de un solo negocio a multi-comercio real: cada una de las
+12 tablas operativas (`users`, `categories`, `products`, `sales`,
+`sale_items`, `cash_shifts`, `cash_movements`, `parked_tickets`,
+`stock_movements`, `fixed_expenses`, `app_alerts`, `store_settings`) suma
+`store_id`, con RLS que acota cada sesión a los datos de su propio comercio.
+`stores` (el directorio de comercios en sí) queda reservado a la terminal
+marcada como operadora de la plataforma.
+
+**Ya aplicada en este proyecto** (verificada: `store_id` obligatorio y 0
+filas huérfanas en las 12 tablas, RLS probada con sesiones simuladas). Esta
+sección documenta el mecanismo para cuando haga falta repetirlo en otro
+entorno, y el paso operativo que **si no se hace, la app se ve vacía**:
+
+> **La terminal existente tiene que cerrar sesión y volver a entrar después
+> de esta migración.** Su sesión ya abierta no tiene el dato de a qué
+> comercio pertenece — eso se agrega recién ahora, y un token ya emitido no
+> se actualiza solo. Mientras tanto va a ver la app sin datos, no rota.
+
+### Cómo sabe cada sesión a qué comercio pertenece
+
+Cada cuenta de terminal (Supabase Auth) lleva etiquetado en
+`app_metadata.store_id` el comercio al que pertenece. Las políticas de RLS
+leen ese dato directo del token de sesión
+(`auth.jwt() -> 'app_metadata' ->> 'store_id'`), sin consultar ninguna otra
+tabla. Como las columnas `store_id` tienen `DEFAULT` apuntando a ese mismo
+valor, el código de la app no necesita mandar `store_id` en cada alta: lo
+completa la base sola, a partir de qué terminal hizo la llamada.
+
+No existe una herramienta para asignar ese dato desde el Dashboard de
+Supabase directamente (Authentication → Users no tiene un campo de
+"metadata" editable para esto) ni una API que lo haga sin exponer la
+`service_role key` al navegador — se hace con una consulta SQL puntual
+(ver paso 3 más abajo).
+
+### Alta de un comercio nuevo (manual, por ahora)
+
+**Fase 2** (no construida todavía) automatizaría esto por completo. Hoy:
+
+1. **Dar de alta el comercio** desde el Portal Maestro → pestaña "Negocios"
+   → *Nuevo Negocio*. Ya persiste de verdad en la tabla `stores` (antes sólo
+   vivía en memoria del navegador).
+2. **Crear la cuenta de esa terminal** en Supabase → Authentication → Users
+   → *Add user* (mismo paso que se hizo para la primera terminal). Marcá
+   *Auto Confirm User*.
+3. **Etiquetar esa cuenta** con el id del comercio recién creado — copiá el
+   `id` de la card del comercio en el Portal Maestro, y corré en el SQL
+   Editor de Supabase:
+
+   ```sql
+   update auth.users
+   set raw_app_meta_data = raw_app_meta_data
+     || jsonb_build_object('store_id', '<id-del-comercio-nuevo>')
+   where email = '<email-de-la-terminal-nueva>';
+   ```
+
+   (Sin `'role': 'superadmin'` — eso queda reservado a la terminal del
+   dueño de la plataforma. Un comercio cliente no debe poder ver el
+   directorio de otros comercios.)
+4. Esa terminal ya puede iniciar sesión: va a ver únicamente los datos de
+   su propio comercio, vacíos hasta que empiece a cargar productos y
+   vender.
+
+### Lo que queda pendiente para más adelante (Fase 2, no construido)
+
+- Que el operador de la plataforma pueda ver los datos operativos (ventas,
+  productos) de un comercio cliente sin salir de su propia sesión —hoy
+  "Asistir a este Negocio" sólo cambia el branding mostrado, no el alcance
+  real de los datos, porque la sesión de Supabase sigue siendo la de la
+  terminal del operador—.
+- Reportes agregados reales entre comercios (hoy "Facturación (tu
+  comercio)" y las demás tarjetas del Portal Maestro muestran sólo los
+  números del propio comercio del operador, con la etiqueta actualizada
+  para que quede claro).
+- Automatizar el alta de la cuenta de terminal de un comercio nuevo (pasos
+  2-3 de arriba) vía una Edge Function con la Admin API de Supabase Auth,
+  en vez del paso manual.

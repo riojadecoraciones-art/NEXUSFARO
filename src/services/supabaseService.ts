@@ -1002,10 +1002,13 @@ export const appAlertService = {
 
 export const storeSettingsService = {
   async get(): Promise<StoreInfo> {
+    // Antes filtraba por .eq('id', 'default'): una fila global compartida por
+    // todo el mundo. Ahora store_settings es una fila POR comercio, y con RLS
+    // ya sólo hay una fila visible para la sesión que llama — no hace falta
+    // (ni corresponde) filtrar por ningún id fijo acá.
     const { data, error } = await supabase
       .from('store_settings')
       .select('*')
-      .eq('id', 'default')
       .maybeSingle();
 
     if (error) {
@@ -1025,8 +1028,10 @@ export const storeSettingsService = {
       };
 
       try {
+        // Ni id ni store_id: sus DEFAULT de columna los completan solos
+        // (id con un uuid nuevo, store_id con el de la sesión que inserta),
+        // así un comercio nuevo nunca choca con la fila de otro.
         await supabase.from('store_settings').insert({
-          id: 'default',
           store_name: defaultInfo.storeName,
           branch_name: defaultInfo.branchName,
           brand_subtitle: defaultInfo.brandSubtitle,
@@ -1069,9 +1074,12 @@ export const storeSettingsService = {
     if (updates.email !== undefined) dbUpdates.email = updates.email;
     if (updates.receiptFooter !== undefined) dbUpdates.receipt_footer = updates.receiptFooter;
 
+    // Sin id ni store_id en el payload: el DEFAULT de columna completa
+    // store_id con el de la sesión que llama, y el upsert resuelve el
+    // conflicto contra ESA fila puntual — nunca la de otro comercio.
     const { error } = await supabase
       .from('store_settings')
-      .upsert({ id: 'default', ...dbUpdates });
+      .upsert(dbUpdates, { onConflict: 'store_id' });
 
     if (error) {
       console.error('Error updating store settings:', error);

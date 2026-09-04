@@ -57,6 +57,18 @@ Copiá la línea que imprime en `.env.local`. La contraseña en sí no se guarda
 ningún lado: sólo su hash, y sólo del lado del build. Si la variable no está
 configurada, el modo maestro queda deshabilitado.
 
+## Multi-comercio
+
+Cada comercio ve únicamente sus propios datos: usuarios, productos, ventas,
+etc. quedan aislados por comercio a nivel de base de datos (RLS), no sólo
+por lo que muestra la pantalla. La terminal de cada comercio se etiqueta una
+vez con el id de su comercio; de ahí en más todo queda acotado sola.
+
+El Portal Maestro (rol SUPERADMIN) da de alta nuevos comercios y lista el
+directorio completo — pero, por ahora, sin ver los datos operativos de cada
+uno (eso es trabajo a futuro). Ver [`supabase/README.md`](supabase/README.md)
+para el mecanismo completo y los pasos para dar de alta un comercio nuevo.
+
 ## Base de datos
 
 Ver [`supabase/README.md`](supabase/README.md) para las migraciones, el estado
