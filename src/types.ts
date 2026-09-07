@@ -241,6 +241,8 @@ export interface StoreTenant {
   totalRevenue?: number;
   totalProducts?: number;
   activeEmployeesCount?: number;
+  /** Email de la cuenta de terminal (Supabase Auth) ya aprovisionada para este comercio, si la hay. */
+  terminalEmail?: string;
 }
 
 export type ActiveView = 

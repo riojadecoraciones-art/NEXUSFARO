@@ -1122,6 +1122,7 @@ export const storeTenantService = {
       address: row.address || undefined,
       status: row.status || 'ACTIVO',
       createdAt: row.created_at,
+      terminalEmail: row.terminal_email || undefined,
     }));
   },
 
@@ -1159,6 +1160,7 @@ export const storeTenantService = {
       address: data.address || undefined,
       status: data.status,
       createdAt: data.created_at,
+      terminalEmail: data.terminal_email || undefined,
     };
   },
 
@@ -1189,6 +1191,34 @@ export const storeTenantService = {
       console.error('Error deleting store tenant:', error);
       throw error;
     }
+  },
+
+  /**
+   * Da de alta la cuenta de terminal (Supabase Auth) de un comercio, vía la
+   * Edge Function provision-store-terminal. Automatiza lo que antes era un
+   * paso manual: crear el usuario en el Dashboard de Supabase y taggearlo
+   * con SQL suelto (ver supabase/README.md). La función genera la
+   * contraseña del lado del servidor y la devuelve una única vez acá — este
+   * código nunca la elige ni la guarda.
+   */
+  async provisionTerminal(
+    storeId: string,
+    terminalEmail: string
+  ): Promise<{ success: boolean; email?: string; password?: string; message: string }> {
+    const { data, error } = await supabase.functions.invoke('provision-store-terminal', {
+      body: { storeId, terminalEmail },
+    });
+
+    if (error) {
+      console.error('Error invocando provision-store-terminal:', error);
+      return { success: false, message: 'No se pudo crear la cuenta de la terminal. Probá de nuevo.' };
+    }
+    if (!data?.success) {
+      console.error('provision-store-terminal respondió sin éxito:', data);
+      return { success: false, message: data?.error || 'No se pudo crear la cuenta de la terminal.' };
+    }
+
+    return { success: true, email: data.email, password: data.password, message: 'Terminal creada' };
   },
 };
 

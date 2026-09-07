@@ -167,6 +167,10 @@ interface AppContextType {
   createStoreTenant: (tenant: Omit<StoreTenant, 'id' | 'createdAt'>) => Promise<StoreTenant>;
   updateStoreTenant: (id: string, updates: Partial<StoreTenant>) => Promise<void>;
   deleteStoreTenant: (id: string) => Promise<void>;
+  provisionStoreTerminal: (
+    storeId: string,
+    terminalEmail: string
+  ) => Promise<{ success: boolean; email?: string; password?: string; message: string }>;
   loginMasterSuperAdmin: (password: string) => Promise<{ success: boolean; message: string }>;
   impersonateStore: (storeId: string) => void;
   exitImpersonation: () => void;
@@ -2502,6 +2506,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     showToast('Comercio eliminado', 'info');
   };
 
+  /**
+   * Da de alta la cuenta de terminal de un comercio (Edge Function
+   * provision-store-terminal, que corre con la Admin API de Supabase Auth).
+   * Automatiza los pasos 2-3 del runbook manual: crear el usuario y
+   * taggearlo con su store_id. La contraseña la genera el servidor y viaja
+   * una única vez en la respuesta — acá no se guarda en ningún lado.
+   */
+  const provisionStoreTerminal = async (
+    storeId: string,
+    terminalEmail: string
+  ): Promise<{ success: boolean; email?: string; password?: string; message: string }> => {
+    const res = await storeTenantService.provisionTerminal(storeId, terminalEmail);
+    if (res.success) {
+      setStoreTenants((prev) =>
+        prev.map((t) => (t.id === storeId ? { ...t, terminalEmail: res.email } : t))
+      );
+    }
+    return res;
+  };
+
   const impersonateStore = (storeId: string) => {
     const targetTenant = storeTenants.find((t) => t.id === storeId);
     if (targetTenant) {
@@ -2786,6 +2810,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         createStoreTenant,
         updateStoreTenant,
         deleteStoreTenant,
+        provisionStoreTerminal,
         impersonateStore,
         exitImpersonation,
         isImpersonating,

@@ -1,0 +1,14 @@
+-- ============================================================================
+-- Alta automatizada de comercios: rastrear qué comercio ya tiene terminal
+-- ============================================================================
+--
+-- La Edge Function provision-store-terminal crea (con la Admin API de
+-- Supabase Auth) la cuenta de terminal de un comercio nuevo y la etiqueta con
+-- su store_id — automatiza los pasos 2-3 del runbook manual documentado en
+-- supabase/README.md. Para que el Portal Maestro pueda mostrar "esta terminal
+-- ya está activada" sin necesitar acceso a auth.users (que sólo service_role
+-- puede leer), la función deja una copia informativa del email acá.
+--
+-- No es la fuente de verdad de la cuenta en sí (esa vive en auth.users, con
+-- app_metadata.store_id): es sólo el dato que la UI puede leer con RLS normal.
+alter table public.stores add column if not exists terminal_email text;

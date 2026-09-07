@@ -129,33 +129,53 @@ Supabase directamente (Authentication → Users no tiene un campo de
 `service_role key` al navegador — se hace con una consulta SQL puntual
 (ver paso 3 más abajo).
 
-### Alta de un comercio nuevo (manual, por ahora)
-
-**Fase 2** (no construida todavía) automatizaría esto por completo. Hoy:
+### Alta de un comercio nuevo
 
 1. **Dar de alta el comercio** desde el Portal Maestro → pestaña "Negocios"
-   → *Nuevo Negocio*. Ya persiste de verdad en la tabla `stores` (antes sólo
-   vivía en memoria del navegador).
-2. **Crear la cuenta de esa terminal** en Supabase → Authentication → Users
-   → *Add user* (mismo paso que se hizo para la primera terminal). Marcá
-   *Auto Confirm User*.
-3. **Etiquetar esa cuenta** con el id del comercio recién creado — copiá el
-   `id` de la card del comercio en el Portal Maestro, y corré en el SQL
-   Editor de Supabase:
+   → *Nuevo Negocio*. Persiste en la tabla `stores`.
+2. En la misma card del comercio, **"Crear acceso de terminal"** → cargar el
+   email de esa terminal → *Crear Cuenta*. Eso llama a la Edge Function
+   `provision-store-terminal` (ver abajo), que crea la cuenta de Supabase
+   Auth, la etiqueta con `store_id` y devuelve una contraseña generada — se
+   muestra **una única vez** en el modal, para copiarla y pasársela al
+   comercio por un canal seguro.
+3. Esa terminal ya puede iniciar sesión: va a ver únicamente los datos de
+   su propio comercio, vacíos hasta que empiece a cargar productos y vender.
 
-   ```sql
-   update auth.users
-   set raw_app_meta_data = raw_app_meta_data
-     || jsonb_build_object('store_id', '<id-del-comercio-nuevo>')
-   where email = '<email-de-la-terminal-nueva>';
-   ```
+No hace falta tocar Supabase a mano ni correr SQL: los pasos manuales que
+antes hacían falta (crear el usuario en el Dashboard y taggearlo con una
+consulta suelta) quedaron reemplazados por este flujo.
 
-   (Sin `'role': 'superadmin'` — eso queda reservado a la terminal del
-   dueño de la plataforma. Un comercio cliente no debe poder ver el
-   directorio de otros comercios.)
-4. Esa terminal ya puede iniciar sesión: va a ver únicamente los datos de
-   su propio comercio, vacíos hasta que empiece a cargar productos y
-   vender.
+#### `provision-store-terminal` (Edge Function)
+
+Usa la Admin API de Supabase Auth (`auth.admin.createUser`), que sólo
+funciona con la `service_role key` — esa clave bypassa RLS por completo, así
+que no puede vivir en el navegador (cualquiera que abra la consola del
+cliente podría leerla). La función:
+
+1. Valida con `auth.getUser()` que quien llama tiene una sesión real.
+2. Chequea que esa sesión tenga `app_metadata.role === 'superadmin'` — sin
+   este paso, cualquier terminal de cualquier comercio cliente podría dar de
+   alta cuentas de otros comercios. Esto es aparte de `verify_jwt=true`
+   (que sólo exige "hay una sesión", no "es la del operador de la
+   plataforma").
+3. Recién ahí crea el usuario y lo etiqueta con `app_metadata.store_id`
+   (nunca con `role: superadmin` — eso queda reservado a la terminal del
+   dueño de la plataforma).
+4. Guarda una copia del email en `stores.terminal_email`, para que el
+   Portal Maestro pueda mostrar "terminal activada" sin necesitar leer
+   `auth.users` (a lo que sólo `service_role` tiene acceso).
+
+**Alternativa manual** (si hiciera falta, p.ej. la función está caída):
+Supabase → Authentication → Users → *Add user* (con *Auto Confirm User*
+marcado), y después en el SQL Editor:
+
+```sql
+update auth.users
+set raw_app_meta_data = raw_app_meta_data
+  || jsonb_build_object('store_id', '<id-del-comercio-nuevo>')
+where email = '<email-de-la-terminal-nueva>';
+```
 
 ### Lo que queda pendiente para más adelante (Fase 2, no construido)
 
@@ -168,6 +188,3 @@ Supabase directamente (Authentication → Users no tiene un campo de
   comercio)" y las demás tarjetas del Portal Maestro muestran sólo los
   números del propio comercio del operador, con la etiqueta actualizada
   para que quede claro).
-- Automatizar el alta de la cuenta de terminal de un comercio nuevo (pasos
-  2-3 de arriba) vía una Edge Function con la Admin API de Supabase Auth,
-  en vez del paso manual.

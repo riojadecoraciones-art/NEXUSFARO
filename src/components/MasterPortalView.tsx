@@ -33,6 +33,8 @@ import {
   Activity,
   ChevronRight,
   X,
+  Terminal,
+  Copy,
 } from 'lucide-react';
 import { StoreTenant, User, UserRole } from '../types';
 import { formatARS } from '../utils/currency';
@@ -50,6 +52,7 @@ export const MasterPortalView: React.FC = () => {
     createStoreTenant,
     updateStoreTenant,
     deleteStoreTenant,
+    provisionStoreTerminal,
     impersonateStore,
     addUser,
     updateUser,
@@ -73,6 +76,12 @@ export const MasterPortalView: React.FC = () => {
 
   const [isNewUserModalOpen, setIsNewUserModalOpen] = useState<boolean>(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
+
+  // Modal: aprovisionar la cuenta de terminal de un comercio
+  const [provisioningStore, setProvisioningStore] = useState<StoreTenant | null>(null);
+  const [provisionEmail, setProvisionEmail] = useState<string>('');
+  const [isProvisioning, setIsProvisioning] = useState<boolean>(false);
+  const [provisionResult, setProvisionResult] = useState<{ email: string; password: string } | null>(null);
 
   // Store Form state
   const [storeForm, setStoreForm] = useState<{
@@ -214,6 +223,50 @@ export const MasterPortalView: React.FC = () => {
     if (confirm(`¿Estás seguro de eliminar el registro del negocio "${store.name}"?`)) {
       await deleteStoreTenant(store.id);
       showToast(`Negocio "${store.name}" eliminado`, 'info');
+    }
+  };
+
+  // Handlers para aprovisionar la cuenta de terminal de un comercio
+  const handleOpenProvision = (store: StoreTenant) => {
+    setProvisioningStore(store);
+    setProvisionEmail('');
+    setProvisionResult(null);
+    setIsProvisioning(false);
+  };
+
+  const handleCloseProvision = () => {
+    setProvisioningStore(null);
+    setProvisionEmail('');
+    setProvisionResult(null);
+    setIsProvisioning(false);
+  };
+
+  const handleSubmitProvision = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!provisioningStore) return;
+    const cleanEmail = provisionEmail.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      showToast('Ingresá un email válido para la terminal', 'error');
+      return;
+    }
+
+    setIsProvisioning(true);
+    const res = await provisionStoreTerminal(provisioningStore.id, cleanEmail);
+    setIsProvisioning(false);
+
+    if (res.success && res.email && res.password) {
+      setProvisionResult({ email: res.email, password: res.password });
+    } else {
+      showToast(res.message, 'error');
+    }
+  };
+
+  const handleCopy = async (value: string, label: string) => {
+    try {
+      await navigator.clipboard.writeText(value);
+      showToast(`${label} copiado al portapapeles`, 'success');
+    } catch {
+      showToast('No se pudo copiar automáticamente. Copialo a mano.', 'warning');
     }
   };
 
@@ -538,6 +591,26 @@ export const MasterPortalView: React.FC = () => {
                         <p className="text-[11px] text-slate-400 text-center py-1">
                           Reportes por comercio: próximamente
                         </p>
+                      </div>
+
+                      {/* Estado de la cuenta de terminal (Supabase Auth) de este comercio.
+                          Sin esto, el dueño del comercio no tiene forma de entrar al sistema. */}
+                      <div className="pt-2 mt-1 border-t border-slate-100">
+                        {store.terminalEmail ? (
+                          <div className="flex items-center gap-2 text-[11px] text-emerald-700 font-semibold min-w-0 py-1">
+                            <Terminal className="w-3.5 h-3.5 shrink-0" />
+                            <span className="truncate">Terminal activada: {store.terminalEmail}</span>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => handleOpenProvision(store)}
+                            className="w-full flex items-center justify-center gap-1.5 text-[11px] text-blue-600 hover:text-blue-800 font-bold py-1"
+                          >
+                            <Terminal className="w-3.5 h-3.5" />
+                            <span>Crear acceso de terminal</span>
+                          </button>
+                        )}
                       </div>
                     </div>
 
@@ -940,6 +1013,133 @@ export const MasterPortalView: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Aprovisionar cuenta de terminal (Edge Function con Admin API) */}
+      {provisioningStore && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
+          <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl border border-slate-200 animate-in zoom-in-95">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
+                  <Terminal className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-900 text-lg">Crear Acceso de Terminal</h3>
+                  <p className="text-xs text-slate-500">{provisioningStore.name}</p>
+                </div>
+              </div>
+              <button
+                onClick={handleCloseProvision}
+                className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {!provisionResult ? (
+              <form onSubmit={handleSubmitProvision} className="space-y-4">
+                <div className="p-3 bg-blue-50 border border-blue-100 rounded-xl text-[11px] text-blue-900 leading-relaxed">
+                  Se crea una cuenta nueva (correo + contraseña) para que este comercio pueda
+                  activar su terminal e ingresar al sistema. La contraseña se genera sola y se
+                  muestra una única vez: nadie más la puede volver a ver después.
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Email de la terminal *
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    autoFocus
+                    value={provisionEmail}
+                    onChange={(e) => setProvisionEmail(e.target.value)}
+                    placeholder="terminal@negociocliente.com"
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 font-medium"
+                  />
+                </div>
+
+                <div className="flex items-center justify-end gap-3 pt-2 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={handleCloseProvision}
+                    className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isProvisioning}
+                    className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold rounded-xl text-xs shadow-md flex items-center gap-2"
+                  >
+                    {isProvisioning ? (
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Terminal className="w-3.5 h-3.5" />
+                    )}
+                    <span>Crear Cuenta</span>
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <div className="space-y-4">
+                <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-[11px] text-amber-900 font-semibold flex items-start gap-2">
+                  <ShieldAlert className="w-4 h-4 shrink-0 text-amber-600 mt-0.5" />
+                  <span>
+                    Copiá estos datos ahora y pasáselos al comercio por un canal seguro. La
+                    contraseña no se vuelve a mostrar.
+                  </span>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Email</label>
+                  <div className="flex items-center gap-2">
+                    <code className="flex-1 px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-mono truncate">
+                      {provisionResult.email}
+                    </code>
+                    <button
+                      type="button"
+                      onClick={() => handleCopy(provisionResult.email, 'Email')}
+                      className="p-2.5 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition-colors shrink-0"
+                      title="Copiar email"
+                    >
+                      <Copy className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Contraseña</label>
+                  <div className="flex items-center gap-2">
+                    <code className="flex-1 px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-mono truncate">
+                      {provisionResult.password}
+                    </code>
+                    <button
+                      type="button"
+                      onClick={() => handleCopy(provisionResult.password, 'Contraseña')}
+                      className="p-2.5 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition-colors shrink-0"
+                      title="Copiar contraseña"
+                    >
+                      <Copy className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex justify-end pt-2 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={handleCloseProvision}
+                    className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl text-xs shadow-md flex items-center gap-2"
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>Ya lo copié, cerrar</span>
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
