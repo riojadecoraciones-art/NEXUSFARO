@@ -245,6 +245,27 @@ export interface StoreTenant {
   terminalEmail?: string;
 }
 
+/**
+ * Datos operativos reales de un comercio, traídos por la Edge Function
+ * get-store-snapshot para el modo "Asistir a este Negocio" del SUPERADMIN.
+ * `storeInfo` viene `null` si ese comercio todavía no cargó su propia
+ * configuración (store_settings vacío) — en ese caso se usan como respaldo
+ * los datos del directorio (StoreTenant), no se fabrica ni se inserta nada.
+ */
+export interface StoreOperationalSnapshot {
+  storeInfo: StoreInfo | null;
+  categories: string[];
+  products: Product[];
+  sales: Sale[];
+  stockMovements: StockMovement[];
+  parkedTickets: ParkedTicket[];
+  cashShifts: CashShift[];
+  activeCashShift: CashShift | null;
+  cashMovements: CashMovement[];
+  expenses: FixedExpense[];
+  alerts: AppAlert[];
+}
+
 export type ActiveView = 
   | 'dashboard' 
   | 'pos' 

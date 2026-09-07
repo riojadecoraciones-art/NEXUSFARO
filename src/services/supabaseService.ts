@@ -12,7 +12,184 @@ import {
   FixedExpense,
   StoreInfo,
   StoreTenant,
+  StoreOperationalSnapshot,
 } from '../types';
+
+// ==========================================
+// MAPPERS: fila de Postgres (snake_case) -> tipo de la app (camelCase)
+// ==========================================
+// Extraídos de los .map() que antes vivían inline y duplicados en varios
+// métodos de este archivo (cashShiftService los repetía 3 veces, cash
+// movements 2), para poder reusar el mismo mapeo también al armar el
+// snapshot de datos de otro comercio (get-store-snapshot, ver
+// storeTenantService.getOperationalSnapshot más abajo) sin escribirlo de
+// nuevo una segunda vez.
+
+function mapProductRow(row: any): Product {
+  return {
+    id: row.id,
+    name: row.name,
+    sku: row.sku,
+    barcode: row.barcode || undefined,
+    category: row.category || 'General',
+    salePrice: Number(row.sale_price) || 0,
+    costPrice: Number(row.cost_price) || 0,
+    stock: Number(row.stock) || 0,
+    minStock: Number(row.min_stock) || 5,
+    imageUrl: row.image_url || '',
+    description: row.description || undefined,
+  };
+}
+
+function mapCashShiftRow(row: any): CashShift {
+  return {
+    id: row.id,
+    cashierId: row.cashier_id,
+    cashierName: row.cashier_name,
+    openedAt: row.opened_at,
+    closedAt: row.closed_at || undefined,
+    status: row.status,
+    initialCash: Number(row.initial_cash) || 0,
+    cashSales: Number(row.cash_sales) || 0,
+    cardSales: Number(row.card_sales) || 0,
+    transferSales: Number(row.transfer_sales) || 0,
+    totalIn: Number(row.total_in) || 0,
+    totalOut: Number(row.total_out) || 0,
+    expectedCash: Number(row.expected_cash) || 0,
+    countedCash: row.counted_cash !== null ? Number(row.counted_cash) : undefined,
+    difference: row.difference !== null ? Number(row.difference) : undefined,
+    notes: row.notes || undefined,
+  };
+}
+
+function mapCashMovementRow(row: any): CashMovement {
+  return {
+    id: row.id,
+    shiftId: row.shift_id || '',
+    timestamp: row.timestamp,
+    type: row.type,
+    amount: Number(row.amount) || 0,
+    reason: row.reason,
+    cashierName: row.cashier_name,
+  };
+}
+
+function mapSaleItemRow(row: any): SaleItem {
+  return {
+    productId: row.product_id || '',
+    productName: row.product_name,
+    sku: row.sku || '',
+    quantity: Number(row.quantity) || 1,
+    unitPrice: Number(row.unit_price) || 0,
+    unitCost: Number(row.unit_cost) || 0,
+    discount: Number(row.discount) || 0,
+    total: Number(row.total) || 0,
+  };
+}
+
+function mapSaleRow(row: any, items: SaleItem[]): Sale {
+  return {
+    id: row.id,
+    ticketNumber: row.ticket_number,
+    timestamp: row.timestamp,
+    cashierId: row.cashier_id,
+    cashierName: row.cashier_name,
+    shiftId: row.shift_id || '',
+    items,
+    subtotal: Number(row.subtotal) || 0,
+    discountTotal: Number(row.discount_total) || 0,
+    discountAppliedBy: row.discount_applied_by || undefined,
+    tax: Number(row.tax) || 0,
+    total: Number(row.total) || 0,
+    paymentMethod: row.payment_method,
+    paymentBreakdown: row.payment_breakdown || [],
+    amountReceived: row.amount_received !== null ? Number(row.amount_received) : undefined,
+    changeGiven: row.change_given !== null ? Number(row.change_given) : undefined,
+    status: row.status,
+    notes: row.notes || undefined,
+    refundedAt: row.refunded_at || undefined,
+    refundedBy: row.refunded_by || undefined,
+  };
+}
+
+function mapStockMovementRow(row: any): StockMovement {
+  return {
+    id: row.id,
+    productId: row.product_id,
+    productName: row.product_name,
+    timestamp: row.timestamp,
+    type: row.type,
+    quantityDelta: Number(row.quantity_delta) || 0,
+    previousStock: Number(row.previous_stock) || 0,
+    newStock: Number(row.new_stock) || 0,
+    reason: row.reason,
+    userName: row.user_name,
+  };
+}
+
+function mapFixedExpenseRow(row: any): FixedExpense {
+  return {
+    id: row.id,
+    name: row.name,
+    category: row.category,
+    amount: Number(row.amount) || 0,
+    frequency: row.frequency,
+    dueDay: row.due_day !== null ? Number(row.due_day) : undefined,
+    dueDate: row.due_date || undefined,
+    status: row.status,
+    lastPaidDate: row.last_paid_date || undefined,
+    lastPaidAmount: row.last_paid_amount !== null ? Number(row.last_paid_amount) : undefined,
+    lastPaidMethod: row.last_paid_method || undefined,
+    beneficiary: row.beneficiary || undefined,
+    notes: row.notes || undefined,
+    createdAt: row.created_at,
+  };
+}
+
+function mapParkedTicketRow(row: any): ParkedTicket {
+  return {
+    id: row.id,
+    customerName: row.customer_name || 'Cliente',
+    items: row.items || [],
+    timestamp: row.timestamp,
+    cashierName: row.cashier_name || '',
+    notes: row.notes || undefined,
+  };
+}
+
+function mapAppAlertRow(row: any): AppAlert {
+  return {
+    id: row.id,
+    type: row.type,
+    title: row.title,
+    message: row.message,
+    timestamp: row.timestamp,
+    read: Boolean(row.read),
+    actionRoute: row.action_route || undefined,
+    actionLabel: row.action_label || undefined,
+    productId: row.product_id || undefined,
+    productName: row.product_name || undefined,
+    productSku: row.product_sku || undefined,
+    productImage: row.product_image || undefined,
+    currentStock: row.current_stock !== null ? Number(row.current_stock) : undefined,
+    minStock: row.min_stock !== null ? Number(row.min_stock) : undefined,
+    category: row.category || undefined,
+    severity: row.severity || undefined,
+  };
+}
+
+function mapStoreSettingsRow(row: any): StoreInfo {
+  return {
+    storeName: row.store_name || 'NEXUS FARO',
+    branchName: row.branch_name || 'Sucursal Principal',
+    brandSubtitle: row.brand_subtitle || 'Punto de Venta y Gestión',
+    cuit: row.cuit || '',
+    address: row.address || '',
+    phone: row.phone || '',
+    email: row.email || 'riojadecoraciones@gmail.com',
+    receiptFooter: row.receipt_footer || '¡Gracias por su compra!',
+  };
+}
 
 // ==========================================
 // 1. USERS SERVICE
@@ -224,19 +401,7 @@ export const productService = {
       throw error;
     }
 
-    return (data || []).map((row) => ({
-      id: row.id,
-      name: row.name,
-      sku: row.sku,
-      barcode: row.barcode || undefined,
-      category: row.category || 'General',
-      salePrice: Number(row.sale_price) || 0,
-      costPrice: Number(row.cost_price) || 0,
-      stock: Number(row.stock) || 0,
-      minStock: Number(row.min_stock) || 5,
-      imageUrl: row.image_url || '',
-      description: row.description || undefined,
-    }));
+    return (data || []).map(mapProductRow);
   },
 
   async create(product: Omit<Product, 'id'> & { id?: string }): Promise<Product> {
@@ -264,19 +429,7 @@ export const productService = {
       throw error;
     }
 
-    return {
-      id: data.id,
-      name: data.name,
-      sku: data.sku,
-      barcode: data.barcode || undefined,
-      category: data.category,
-      salePrice: Number(data.sale_price),
-      costPrice: Number(data.cost_price),
-      stock: Number(data.stock),
-      minStock: Number(data.min_stock),
-      imageUrl: data.image_url || '',
-      description: data.description || undefined,
-    };
+    return mapProductRow(data);
   },
 
   async update(id: string, updates: Partial<Product>): Promise<void> {
@@ -339,24 +492,7 @@ export const cashShiftService = {
       throw error;
     }
 
-    return (data || []).map((row) => ({
-      id: row.id,
-      cashierId: row.cashier_id,
-      cashierName: row.cashier_name,
-      openedAt: row.opened_at,
-      closedAt: row.closed_at || undefined,
-      status: row.status,
-      initialCash: Number(row.initial_cash) || 0,
-      cashSales: Number(row.cash_sales) || 0,
-      cardSales: Number(row.card_sales) || 0,
-      transferSales: Number(row.transfer_sales) || 0,
-      totalIn: Number(row.total_in) || 0,
-      totalOut: Number(row.total_out) || 0,
-      expectedCash: Number(row.expected_cash) || 0,
-      countedCash: row.counted_cash !== null ? Number(row.counted_cash) : undefined,
-      difference: row.difference !== null ? Number(row.difference) : undefined,
-      notes: row.notes || undefined,
-    }));
+    return (data || []).map(mapCashShiftRow);
   },
 
   async getActive(): Promise<CashShift | null> {
@@ -373,26 +509,7 @@ export const cashShiftService = {
       return null;
     }
 
-    if (!data) return null;
-
-    return {
-      id: data.id,
-      cashierId: data.cashier_id,
-      cashierName: data.cashier_name,
-      openedAt: data.opened_at,
-      closedAt: data.closed_at || undefined,
-      status: data.status,
-      initialCash: Number(data.initial_cash) || 0,
-      cashSales: Number(data.cash_sales) || 0,
-      cardSales: Number(data.card_sales) || 0,
-      transferSales: Number(data.transfer_sales) || 0,
-      totalIn: Number(data.total_in) || 0,
-      totalOut: Number(data.total_out) || 0,
-      expectedCash: Number(data.expected_cash) || 0,
-      countedCash: data.counted_cash !== null ? Number(data.counted_cash) : undefined,
-      difference: data.difference !== null ? Number(data.difference) : undefined,
-      notes: data.notes || undefined,
-    };
+    return data ? mapCashShiftRow(data) : null;
   },
 
   async openShift(shift: CashShift): Promise<CashShift> {
@@ -421,24 +538,7 @@ export const cashShiftService = {
       throw error;
     }
 
-    return {
-      id: data.id,
-      cashierId: data.cashier_id,
-      cashierName: data.cashier_name,
-      openedAt: data.opened_at,
-      closedAt: data.closed_at || undefined,
-      status: data.status,
-      initialCash: Number(data.initial_cash) || 0,
-      cashSales: Number(data.cash_sales) || 0,
-      cardSales: Number(data.card_sales) || 0,
-      transferSales: Number(data.transfer_sales) || 0,
-      totalIn: Number(data.total_in) || 0,
-      totalOut: Number(data.total_out) || 0,
-      expectedCash: Number(data.expected_cash) || 0,
-      countedCash: data.counted_cash !== null ? Number(data.counted_cash) : undefined,
-      difference: data.difference !== null ? Number(data.difference) : undefined,
-      notes: data.notes || undefined,
-    };
+    return mapCashShiftRow(data);
   },
 
   async updateShift(id: string, updates: Partial<CashShift>): Promise<void> {
@@ -474,15 +574,7 @@ export const cashShiftService = {
       throw error;
     }
 
-    return (data || []).map((row) => ({
-      id: row.id,
-      shiftId: row.shift_id || '',
-      timestamp: row.timestamp,
-      type: row.type,
-      amount: Number(row.amount) || 0,
-      reason: row.reason,
-      cashierName: row.cashier_name,
-    }));
+    return (data || []).map(mapCashMovementRow);
   },
 
   async addMovement(movement: CashMovement): Promise<CashMovement> {
@@ -505,15 +597,7 @@ export const cashShiftService = {
       throw error;
     }
 
-    return {
-      id: data.id,
-      shiftId: data.shift_id || '',
-      timestamp: data.timestamp,
-      type: data.type,
-      amount: Number(data.amount) || 0,
-      reason: data.reason,
-      cashierName: data.cashier_name,
-    };
+    return mapCashMovementRow(data);
   },
 };
 
@@ -549,43 +633,12 @@ export const saleService = {
 
     const itemsBySaleId = new Map<string, SaleItem[]>();
     (itemsData || []).forEach((row) => {
-      const item: SaleItem = {
-        productId: row.product_id || '',
-        productName: row.product_name,
-        sku: row.sku || '',
-        quantity: Number(row.quantity) || 1,
-        unitPrice: Number(row.unit_price) || 0,
-        unitCost: Number(row.unit_cost) || 0,
-        discount: Number(row.discount) || 0,
-        total: Number(row.total) || 0,
-      };
       const list = itemsBySaleId.get(row.sale_id) || [];
-      list.push(item);
+      list.push(mapSaleItemRow(row));
       itemsBySaleId.set(row.sale_id, list);
     });
 
-    return salesData.map((row) => ({
-      id: row.id,
-      ticketNumber: row.ticket_number,
-      timestamp: row.timestamp,
-      cashierId: row.cashier_id,
-      cashierName: row.cashier_name,
-      shiftId: row.shift_id || '',
-      items: itemsBySaleId.get(row.id) || [],
-      subtotal: Number(row.subtotal) || 0,
-      discountTotal: Number(row.discount_total) || 0,
-      discountAppliedBy: row.discount_applied_by || undefined,
-      tax: Number(row.tax) || 0,
-      total: Number(row.total) || 0,
-      paymentMethod: row.payment_method,
-      paymentBreakdown: row.payment_breakdown || [],
-      amountReceived: row.amount_received !== null ? Number(row.amount_received) : undefined,
-      changeGiven: row.change_given !== null ? Number(row.change_given) : undefined,
-      status: row.status,
-      notes: row.notes || undefined,
-      refundedAt: row.refunded_at || undefined,
-      refundedBy: row.refunded_by || undefined,
-    }));
+    return salesData.map((row) => mapSaleRow(row, itemsBySaleId.get(row.id) || []));
   },
 
   /**
@@ -700,18 +753,7 @@ export const stockMovementService = {
       throw error;
     }
 
-    return (data || []).map((row) => ({
-      id: row.id,
-      productId: row.product_id,
-      productName: row.product_name,
-      timestamp: row.timestamp,
-      type: row.type,
-      quantityDelta: Number(row.quantity_delta) || 0,
-      previousStock: Number(row.previous_stock) || 0,
-      newStock: Number(row.new_stock) || 0,
-      reason: row.reason,
-      userName: row.user_name,
-    }));
+    return (data || []).map(mapStockMovementRow);
   },
 
   async create(movement: StockMovement): Promise<void> {
@@ -751,22 +793,7 @@ export const fixedExpenseService = {
       throw error;
     }
 
-    return (data || []).map((row) => ({
-      id: row.id,
-      name: row.name,
-      category: row.category,
-      amount: Number(row.amount) || 0,
-      frequency: row.frequency,
-      dueDay: row.due_day !== null ? Number(row.due_day) : undefined,
-      dueDate: row.due_date || undefined,
-      status: row.status,
-      lastPaidDate: row.last_paid_date || undefined,
-      lastPaidAmount: row.last_paid_amount !== null ? Number(row.last_paid_amount) : undefined,
-      lastPaidMethod: row.last_paid_method || undefined,
-      beneficiary: row.beneficiary || undefined,
-      notes: row.notes || undefined,
-      createdAt: row.created_at,
-    }));
+    return (data || []).map(mapFixedExpenseRow);
   },
 
   async create(expense: Omit<FixedExpense, 'id' | 'createdAt'> & { id?: string; createdAt?: string }): Promise<FixedExpense> {
@@ -799,22 +826,7 @@ export const fixedExpenseService = {
       throw error;
     }
 
-    return {
-      id: data.id,
-      name: data.name,
-      category: data.category,
-      amount: Number(data.amount) || 0,
-      frequency: data.frequency,
-      dueDay: data.due_day !== null ? Number(data.due_day) : undefined,
-      dueDate: data.due_date || undefined,
-      status: data.status,
-      lastPaidDate: data.last_paid_date || undefined,
-      lastPaidAmount: data.last_paid_amount !== null ? Number(data.last_paid_amount) : undefined,
-      lastPaidMethod: data.last_paid_method || undefined,
-      beneficiary: data.beneficiary || undefined,
-      notes: data.notes || undefined,
-      createdAt: data.created_at,
-    };
+    return mapFixedExpenseRow(data);
   },
 
   async update(id: string, updates: Partial<FixedExpense>): Promise<void> {
@@ -865,14 +877,7 @@ export const parkedTicketService = {
       throw error;
     }
 
-    return (data || []).map((row) => ({
-      id: row.id,
-      customerName: row.customer_name || 'Cliente',
-      items: row.items || [],
-      timestamp: row.timestamp,
-      cashierName: row.cashier_name || '',
-      notes: row.notes || undefined,
-    }));
+    return (data || []).map(mapParkedTicketRow);
   },
 
   async create(ticket: ParkedTicket): Promise<ParkedTicket> {
@@ -894,14 +899,7 @@ export const parkedTicketService = {
       throw error;
     }
 
-    return {
-      id: data.id,
-      customerName: data.customer_name,
-      items: data.items,
-      timestamp: data.timestamp,
-      cashierName: data.cashier_name,
-      notes: data.notes || undefined,
-    };
+    return mapParkedTicketRow(data);
   },
 
   async delete(id: string): Promise<void> {
@@ -930,24 +928,7 @@ export const appAlertService = {
       throw error;
     }
 
-    return (data || []).map((row) => ({
-      id: row.id,
-      type: row.type,
-      title: row.title,
-      message: row.message,
-      timestamp: row.timestamp,
-      read: Boolean(row.read),
-      actionRoute: row.action_route || undefined,
-      actionLabel: row.action_label || undefined,
-      productId: row.product_id || undefined,
-      productName: row.product_name || undefined,
-      productSku: row.product_sku || undefined,
-      productImage: row.product_image || undefined,
-      currentStock: row.current_stock !== null ? Number(row.current_stock) : undefined,
-      minStock: row.min_stock !== null ? Number(row.min_stock) : undefined,
-      category: row.category || undefined,
-      severity: row.severity || undefined,
-    }));
+    return (data || []).map(mapAppAlertRow);
   },
 
   async create(alert: AppAlert): Promise<void> {
@@ -1048,16 +1029,7 @@ export const storeSettingsService = {
       return defaultInfo;
     }
 
-    return {
-      storeName: data.store_name || 'NEXUS FARO',
-      branchName: data.branch_name || 'Sucursal Principal',
-      brandSubtitle: data.brand_subtitle || 'Punto de Venta y Gestión',
-      cuit: data.cuit || '',
-      address: data.address || '',
-      phone: data.phone || '',
-      email: data.email || 'riojadecoraciones@gmail.com',
-      receiptFooter: data.receipt_footer || '¡Gracias por su compra!',
-    };
+    return mapStoreSettingsRow(data);
   },
 
   async update(updates: Partial<StoreInfo>): Promise<void> {
@@ -1219,6 +1191,59 @@ export const storeTenantService = {
     }
 
     return { success: true, email: data.email, password: data.password, message: 'Terminal creada' };
+  },
+
+  /**
+   * Trae los datos operativos reales de OTRO comercio (ventas, productos,
+   * gastos, caja, etc.) para el modo "Asistir a este Negocio" del
+   * SUPERADMIN, vía la Edge Function get-store-snapshot. No pasa por RLS
+   * normal a propósito: la sesión del operador sigue siendo la suya, acotada
+   * a su propio store_id — por eso esto necesita un endpoint aparte,
+   * verificado server-side, en vez de un simple .select() con filtro.
+   *
+   * No incluye la lista de empleados/PIN del comercio (fuera de alcance:
+   * lo pedido fue "ver ventas, productos", y es el dato más sensible de la
+   * tabla). Los mappers reusados acá son los mismos que usa el resto de este
+   * archivo — la función del servidor devuelve filas crudas sin mapear.
+   */
+  async getOperationalSnapshot(
+    storeId: string
+  ): Promise<{ success: true; snapshot: StoreOperationalSnapshot } | { success: false; message: string }> {
+    const { data, error } = await supabase.functions.invoke('get-store-snapshot', {
+      body: { storeId },
+    });
+
+    if (error) {
+      console.error('Error invocando get-store-snapshot:', error);
+      return { success: false, message: 'No se pudieron cargar los datos del comercio. Probá de nuevo.' };
+    }
+    if (!data?.success) {
+      console.error('get-store-snapshot respondió sin éxito:', data);
+      return { success: false, message: data?.error || 'No se pudieron cargar los datos del comercio.' };
+    }
+
+    const saleItemsBySaleId = new Map<string, SaleItem[]>();
+    (data.saleItems || []).forEach((row: any) => {
+      const list = saleItemsBySaleId.get(row.sale_id) || [];
+      list.push(mapSaleItemRow(row));
+      saleItemsBySaleId.set(row.sale_id, list);
+    });
+
+    const snapshot: StoreOperationalSnapshot = {
+      storeInfo: data.storeSettings ? mapStoreSettingsRow(data.storeSettings) : null,
+      categories: (data.categories || []).map((c: any) => c.name),
+      products: (data.products || []).map(mapProductRow),
+      sales: (data.sales || []).map((row: any) => mapSaleRow(row, saleItemsBySaleId.get(row.id) || [])),
+      stockMovements: (data.stockMovements || []).map(mapStockMovementRow),
+      parkedTickets: (data.parkedTickets || []).map(mapParkedTicketRow),
+      cashShifts: (data.cashShifts || []).map(mapCashShiftRow),
+      activeCashShift: data.activeCashShift ? mapCashShiftRow(data.activeCashShift) : null,
+      cashMovements: (data.cashMovements || []).map(mapCashMovementRow),
+      expenses: (data.fixedExpenses || []).map(mapFixedExpenseRow),
+      alerts: (data.appAlerts || []).map(mapAppAlertRow),
+    };
+
+    return { success: true, snapshot };
   },
 };
 

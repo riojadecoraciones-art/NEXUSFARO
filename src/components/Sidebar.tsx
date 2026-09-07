@@ -33,6 +33,7 @@ export const Sidebar: React.FC = () => {
     storeInfo,
     isSupportMode,
     setIsSupportModalOpen,
+    isImpersonating,
   } = useApp();
 
   if (!currentUser) return null;
@@ -100,10 +101,14 @@ export const Sidebar: React.FC = () => {
       visible: true,
     },
     {
+      // Los datos de "Asistir a este Negocio" no incluyen empleados/PIN del
+      // cliente (fuera de alcance, dato sensible) — mientras se audita, esto
+      // seguiría mostrando el staff propio del operador con el cartel puesto
+      // de "viendo a otro comercio", así que se oculta directamente.
       id: 'employees',
       label: 'Empleados & PINs',
       icon: Users,
-      visible: isOwner,
+      visible: isOwner && !isImpersonating,
     },
   ];
 

@@ -790,6 +790,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const canAccessView = (view: ActiveView): boolean => {
     if (!currentUser) return false;
+    // Empleados/PIN del comercio auditado no forman parte del snapshot de
+    // "Asistir a este Negocio" (dato sensible, fuera de alcance) — sin esto
+    // se seguiría viendo el staff propio del operador bajo el cartel de
+    // "viendo a otro comercio".
+    if (isImpersonating && view === 'employees') return false;
     if (currentUser.role === 'SUPERADMIN' || isSupportMode) return true;
     if (currentUser.role === 'DUEÑO') {
       return view !== 'master_portal';
@@ -801,12 +806,40 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const setActiveView = (view: ActiveView) => {
+    // Volver al Portal Maestro es la forma limpia de "salir" del modo
+    // auditoría — si no se hiciera esto, las tarjetas de comercio del Portal
+    // mostrarían de rebote los números del comercio auditado en vez de los
+    // propios (isImpersonating seguiría activo aunque se navegue afuera).
+    if (isImpersonating && view === 'master_portal') {
+      exitImpersonation();
+      return;
+    }
     if (currentUser && !canAccessView(view)) {
       showToast('Acceso restringido: Esta sección no está habilitada para tu perfil', 'warning');
       setActiveViewRaw(currentUser.role === 'DUEÑO' ? 'dashboard' : 'pos');
       return;
     }
     setActiveViewRaw(view);
+  };
+
+  /**
+   * "Asistir a este Negocio" es de sólo lectura. Sin este chequeo, cada
+   * alta/edición/baja seguiría escribiendo de verdad — pero en el comercio
+   * del OPERADOR, no en el del cliente que se está mirando, porque la sesión
+   * de Supabase nunca cambia (ver impersonateStore). Eso corrompería datos
+   * del operador en silencio (ventas fantasma, configuración pisada) sin que
+   * nadie se dé cuenta, ya que la pantalla sigue mostrando el nombre del
+   * cliente. Se llama al principio de cada función que escribe, mismo
+   * patrón que ya usan los chequeos de permiso de deleteProduct/refundSale.
+   */
+  const blockIfImpersonating = (): boolean => {
+    if (!isImpersonating) return false;
+    showToast(
+      'Modo sólo lectura: no se pueden hacer cambios mientras se audita otro comercio.',
+      'warning',
+      { title: 'Modo Auditoría de Tienda' }
+    );
+    return true;
   };
 
   // ==========================================
@@ -1033,6 +1066,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updateUserPin = async (userId: string, newPin: string): Promise<boolean> => {
+    if (blockIfImpersonating()) return false;
     if (newPin.length !== 4 || !/^\d{4}$/.test(newPin)) {
       showToast('El PIN debe tener 4 dígitos numéricos', 'error');
       return false;
@@ -1068,6 +1102,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const addUser = async (userData: Omit<User, 'id' | 'initials'>) => {
+    if (blockIfImpersonating()) return;
     const initials = userData.name
       .split(' ')
       .map((n) => n[0])
@@ -1109,6 +1144,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updateUser = async (id: string, userData: Partial<User>) => {
+    if (blockIfImpersonating()) return;
     // El PIN nunca se actualiza por esta vía: usá updateUserPin, que lo hashea.
     const { pin, ...safeUserData } = userData;
     if (pin !== undefined && !isHashed(pin)) {
@@ -1147,6 +1183,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const deleteUser = async (id: string): Promise<boolean> => {
+    if (blockIfImpersonating()) return false;
     if (!currentUser || currentUser.role !== 'DUEÑO') {
       showToast('Solo el dueño puede eliminar cuentas de usuario', 'error');
       return false;
@@ -1176,6 +1213,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // ==========================================
 
   const openCashShift = async (initialCash: number, notes?: string): Promise<boolean> => {
+    if (blockIfImpersonating()) return false;
     if (!currentUser) return false;
     if (activeShift && activeShift.status === 'ABIERTA') {
       showToast('Ya existe un turno de caja abierto', 'warning');
@@ -1211,6 +1249,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const addCashMovement = async (type: 'ENTRADA' | 'RETIRO', amount: number, reason: string): Promise<boolean> => {
+    if (blockIfImpersonating()) return false;
     if (!activeShift || activeShift.status !== 'ABIERTA') {
       showToast('Debes tener la caja abierta para registrar movimientos', 'error');
       return false;
@@ -1259,6 +1298,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const closeCashShift = async (countedCash: number, notes?: string): Promise<boolean> => {
+    if (blockIfImpersonating()) return false;
     if (!activeShift || activeShift.status !== 'ABIERTA') {
       showToast('No hay una caja abierta para cerrar', 'error');
       return false;
@@ -1487,6 +1527,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const deleteParkedTicket = async (ticketId: string) => {
+    if (blockIfImpersonating()) return;
     try {
       await parkedTicketService.delete(ticketId);
     } catch (e) {
@@ -1507,6 +1548,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     amountReceived?: number;
     notes?: string;
   }): Promise<Sale | null> => {
+    if (blockIfImpersonating()) return null;
     if (!currentUser) {
       showToast('Debes iniciar sesión para cobrar', 'error');
       return null;
