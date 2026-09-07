@@ -39,6 +39,13 @@ const salt = randomBytes(SALT_BYTES);
 const hash = await pbkdf2Async(password, salt, ITERATIONS, KEY_BYTES, 'sha256');
 const encoded = ['pbkdf2', 'sha256', ITERATIONS, salt.toString('base64'), hash.toString('base64')].join('$');
 
+// Vite carga .env.local con dotenv-expand, que interpreta "$palabra" como una
+// referencia a otra variable (p.ej. "$sha256" → busca una variable SHA256).
+// Sin escapar, eso rompe el hash en pedazos silenciosamente: la app arranca
+// pero el acceso maestro nunca coincide, sin ningún error visible. Escapar
+// cada "$" como "\$" hace que dotenv-expand lo deje intacto.
+const escapedForEnvFile = encoded.replace(/\$/g, '\\$');
+
 console.log('\nPegá esta línea en tu archivo .env.local:\n');
-console.log(`VITE_MASTER_PASSWORD_HASH="${encoded}"\n`);
+console.log(`VITE_MASTER_PASSWORD_HASH="${escapedForEnvFile}"\n`);
 console.log('Guardá la contraseña en un gestor de contraseñas: el hash no se puede revertir.\n');

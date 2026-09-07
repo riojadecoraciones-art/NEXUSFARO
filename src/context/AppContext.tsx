@@ -205,8 +205,16 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 const MASTER_PASSWORD_HASH = import.meta.env.VITE_MASTER_PASSWORD_HASH?.trim() || '';
 const IS_MASTER_ACCESS_CONFIGURED = isHashed(MASTER_PASSWORD_HASH);
 
-const MASTER_NOT_CONFIGURED_MESSAGE =
-  'El acceso maestro no está configurado en esta instalación. Generá el hash con "npm run hash-password" y cargá VITE_MASTER_PASSWORD_HASH en .env.local.';
+// Si hay un valor pero no pasa isHashed(), casi siempre es el mismo problema:
+// Vite carga .env.local con dotenv-expand, que interpreta "$palabra" (p.ej.
+// el "$sha256" del hash) como referencia a otra variable y la borra en
+// silencio — el hash llega roto a import.meta.env aunque se haya pegado
+// bien en el archivo. "npm run hash-password" ya imprime la línea con los
+// "$" escapados para evitar esto; este mensaje distingue ese caso de
+// "nunca se configuró nada".
+const MASTER_NOT_CONFIGURED_MESSAGE = MASTER_PASSWORD_HASH
+  ? 'VITE_MASTER_PASSWORD_HASH está cargado pero no tiene el formato esperado. Esto pasa cuando los "$" del hash no quedaron escapados en .env.local: Vite los interpreta como referencias a otra variable y lo corta en silencio. Volvé a correr "npm run hash-password" y pegá la línea completa que imprime (ya sale con los "$" escapados).'
+  : 'El acceso maestro no está configurado en esta instalación. Generá el hash con "npm run hash-password" y cargá VITE_MASTER_PASSWORD_HASH en .env.local.';
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // 0. Global Loading & Supabase Connection States

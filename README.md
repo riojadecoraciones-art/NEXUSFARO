@@ -53,9 +53,12 @@ Opcional. Habilita el portal de diagnóstico y las copias de seguridad.
 npm run hash-password
 ```
 
-Copiá la línea que imprime en `.env.local`. La contraseña en sí no se guarda en
-ningún lado: sólo su hash, y sólo del lado del build. Si la variable no está
-configurada, el modo maestro queda deshabilitado.
+Copiá la línea que imprime **tal cual**, sin retocarla, en `.env.local` — ya
+sale con los `$` escapados (`\$`) para que Vite no los interprete como
+referencias a otra variable y corte el hash en silencio. La contraseña en sí
+no se guarda en ningún lado: sólo su hash, y sólo del lado del build. Si la
+variable no está configurada (o quedó mal pegada), el modo maestro queda
+deshabilitado y el mensaje de error lo indica.
 
 ## Multi-comercio
 
