@@ -245,8 +245,10 @@ export const LoginScreen: React.FC = () => {
                   <span className="text-[10px] text-slate-400 font-medium">Terminal POS</span>
                 </div>
 
-                {/* Users List */}
-                <div className="space-y-2.5 max-h-[260px] overflow-y-auto pr-1">
+                {/* Users Grid — en lista vertical esto se volvía largo apenas un
+                    comercio sumaba varios empleados propios; en grilla entran
+                    2-3 veces más tiles sin scroll en el mismo espacio. */}
+                <div className="grid grid-cols-3 gap-2.5 max-h-[260px] overflow-y-auto pr-1 content-start">
                   {users.map((user) => {
                     const isSelected = selectedUser.id === user.id;
                     const isOwner = user.role === 'DUEÑO';
@@ -260,7 +262,8 @@ export const LoginScreen: React.FC = () => {
                           setPin('');
                           sounds.playScannerBeep();
                         }}
-                        className={`w-full flex items-center justify-between p-3 rounded-2xl border-2 transition-all text-left ${
+                        title={`${user.name} • ${user.roleTitle}`}
+                        className={`relative flex flex-col items-center gap-1.5 p-2.5 rounded-2xl border-2 transition-all ${
                           isSelected
                             ? isSuper
                               ? 'border-amber-500 bg-amber-50/50 shadow-md ring-2 ring-amber-500/10'
@@ -270,17 +273,17 @@ export const LoginScreen: React.FC = () => {
                             : 'border-slate-200 bg-white hover:border-slate-300'
                         }`}
                       >
-                        <div className="flex items-center gap-3">
+                        <div className="relative">
                           {user.avatarUrl && user.avatarUrl.trim() !== '' ? (
                             <img
                               src={user.avatarUrl}
                               alt={user.name}
                               referrerPolicy="no-referrer"
-                              className="w-10 h-10 rounded-xl object-cover border border-slate-200 shadow-2xs"
+                              className="w-12 h-12 rounded-xl object-cover border border-slate-200 shadow-2xs"
                             />
                           ) : (
                             <div
-                              className={`w-10 h-10 rounded-xl font-black flex items-center justify-center text-sm ${
+                              className={`w-12 h-12 rounded-xl font-black flex items-center justify-center text-sm ${
                                 isSuper
                                   ? 'bg-amber-100 text-amber-900'
                                   : isOwner
@@ -291,28 +294,19 @@ export const LoginScreen: React.FC = () => {
                               {user.initials || 'U'}
                             </div>
                           )}
-                          <div className="overflow-hidden">
-                            <div className="font-bold text-slate-900 text-sm truncate">{user.name}</div>
-                            <div className="text-[11px] text-slate-500 font-medium flex items-center gap-1 mt-0.5">
-                              <span
-                                className={`inline-block w-2 h-2 rounded-full shrink-0 ${
-                                  isSuper ? 'bg-amber-500' : isOwner ? 'bg-emerald-500' : 'bg-blue-500'
-                                }`}
-                              />
-                              <span className="truncate">{user.roleTitle}</span>
+                          {isSelected && (
+                            <div
+                              className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-full text-white flex items-center justify-center border-2 border-white ${
+                                isSuper ? 'bg-amber-500' : isOwner ? 'bg-emerald-600' : 'bg-blue-600'
+                              }`}
+                            >
+                              <Check className="w-3 h-3 stroke-[3]" />
                             </div>
-                          </div>
+                          )}
                         </div>
-
-                        {isSelected && (
-                          <div
-                            className={`w-6 h-6 rounded-full text-white flex items-center justify-center shrink-0 ${
-                              isSuper ? 'bg-amber-500' : isOwner ? 'bg-emerald-600' : 'bg-blue-600'
-                            }`}
-                          >
-                            <Check className="w-3.5 h-3.5 stroke-[3]" />
-                          </div>
-                        )}
+                        <div className="font-bold text-slate-900 text-[11px] leading-tight truncate w-full text-center">
+                          {user.name}
+                        </div>
                       </button>
                     );
                   })}
