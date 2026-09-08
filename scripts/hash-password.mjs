@@ -44,8 +44,16 @@ const encoded = ['pbkdf2', 'sha256', ITERATIONS, salt.toString('base64'), hash.t
 // Sin escapar, eso rompe el hash en pedazos silenciosamente: la app arranca
 // pero el acceso maestro nunca coincide, sin ningún error visible. Escapar
 // cada "$" como "\$" hace que dotenv-expand lo deje intacto.
+//
+// Ese mismo escape NO corresponde en el panel de variables de entorno de un
+// hosting (Vercel, Netlify, etc.): ahí el valor se inyecta directo a
+// process.env, sin pasar nunca por dotenv-expand — así que las barras
+// quedarían pegadas al hash de verdad, rompiéndolo de nuevo, pero al revés.
+// Por eso se imprimen las dos versiones, cada una para su lugar.
 const escapedForEnvFile = encoded.replace(/\$/g, '\\$');
 
-console.log('\nPegá esta línea en tu archivo .env.local:\n');
+console.log('\nPara tu archivo .env.local (uso local, npm run dev):\n');
 console.log(`VITE_MASTER_PASSWORD_HASH="${escapedForEnvFile}"\n`);
+console.log('Para el panel de variables de entorno de tu hosting (Vercel, Netlify, etc. — SIN barras):\n');
+console.log(`VITE_MASTER_PASSWORD_HASH=${encoded}\n`);
 console.log('Guardá la contraseña en un gestor de contraseñas: el hash no se puede revertir.\n');
