@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { User } from '../types';
 import { ForgotPinModal } from './ForgotPinModal';
+import { UserAvatar } from './UserAvatar';
 import { sounds } from '../utils/soundEffects';
 
 export const LoginScreen: React.FC = () => {
@@ -274,26 +275,19 @@ export const LoginScreen: React.FC = () => {
                         }`}
                       >
                         <div className="relative">
-                          {user.avatarUrl && user.avatarUrl.trim() !== '' ? (
-                            <img
-                              src={user.avatarUrl}
-                              alt={user.name}
-                              referrerPolicy="no-referrer"
-                              className="w-12 h-12 rounded-xl object-cover border border-slate-200 shadow-2xs"
-                            />
-                          ) : (
-                            <div
-                              className={`w-12 h-12 rounded-xl font-black flex items-center justify-center text-sm ${
-                                isSuper
-                                  ? 'bg-amber-100 text-amber-900'
-                                  : isOwner
-                                  ? 'bg-emerald-100 text-emerald-900'
-                                  : 'bg-blue-100 text-blue-900'
-                              }`}
-                            >
-                              {user.initials || 'U'}
-                            </div>
-                          )}
+                          <UserAvatar
+                            avatarUrl={user.avatarUrl}
+                            name={user.name}
+                            initials={user.initials}
+                            className="w-12 h-12 rounded-xl border border-slate-200 shadow-2xs"
+                            fallbackClassName={`text-sm ${
+                              isSuper
+                                ? 'bg-amber-100 text-amber-900'
+                                : isOwner
+                                ? 'bg-emerald-100 text-emerald-900'
+                                : 'bg-blue-100 text-blue-900'
+                            }`}
+                          />
                           {isSelected && (
                             <div
                               className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-full text-white flex items-center justify-center border-2 border-white ${

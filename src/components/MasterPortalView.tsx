@@ -36,6 +36,7 @@ import {
   Terminal,
   Copy,
 } from 'lucide-react';
+import { UserAvatar } from './UserAvatar';
 import { StoreTenant, User, UserRole } from '../types';
 import { formatARS } from '../utils/currency';
 
@@ -720,17 +721,12 @@ export const MasterPortalView: React.FC = () => {
                       <tr key={user.id} className="hover:bg-slate-50/70 transition-colors">
                         <td className="py-4 px-6">
                           <div className="flex items-center gap-3">
-                            {user.avatarUrl ? (
-                              <img
-                                src={user.avatarUrl}
-                                alt={user.name}
-                                className="w-10 h-10 rounded-xl object-cover border border-slate-200 shrink-0"
-                              />
-                            ) : (
-                              <div className="w-10 h-10 rounded-xl bg-slate-900 text-white font-bold flex items-center justify-center shrink-0">
-                                {user.initials || 'U'}
-                              </div>
-                            )}
+                            <UserAvatar
+                              avatarUrl={user.avatarUrl}
+                              name={user.name}
+                              initials={user.initials}
+                              className="w-10 h-10 rounded-xl border border-slate-200 shrink-0"
+                            />
                             <div>
                               <div className="font-bold text-slate-900 text-sm">{user.name}</div>
                               <div className="text-[11px] font-semibold text-blue-600 flex items-center gap-1">

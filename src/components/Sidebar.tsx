@@ -21,6 +21,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { ActiveView } from '../types';
+import { UserAvatar } from './UserAvatar';
 
 export const Sidebar: React.FC = () => {
   const {
@@ -249,24 +250,19 @@ export const Sidebar: React.FC = () => {
         {/* User Card */}
         <div className="p-2.5 bg-white/80 rounded-xl border border-blue-200/60 flex items-center justify-between">
           <div className="flex items-center gap-2.5 overflow-hidden">
-            {currentUser.avatarUrl && currentUser.avatarUrl.trim() !== '' ? (
-              <img
-                src={currentUser.avatarUrl}
-                alt={currentUser.name}
-                referrerPolicy="no-referrer"
-                className="w-8 h-8 rounded-lg object-cover border border-slate-200 shadow-2xs"
-              />
-            ) : (
-              <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-xs shadow-2xs ${
+            <UserAvatar
+              avatarUrl={currentUser.avatarUrl}
+              name={currentUser.name}
+              initials={currentUser.initials}
+              className="w-8 h-8 rounded-lg border border-slate-200 shadow-2xs"
+              fallbackClassName={`text-xs ${
                 isSuperAdmin
                   ? 'bg-amber-100 text-amber-800'
                   : currentUser.role === 'DUEÑO'
                   ? 'bg-emerald-100 text-emerald-800'
                   : 'bg-blue-100 text-blue-800'
-              }`}>
-                {currentUser.initials || 'U'}
-              </div>
-            )}
+              }`}
+            />
             <div className="overflow-hidden">
               <div className="font-bold text-xs text-slate-900 truncate leading-tight">
                 {currentUser.name}

@@ -20,6 +20,7 @@ import {
   Phone,
 } from 'lucide-react';
 import { User, UserRole } from '../types';
+import { UserAvatar } from './UserAvatar';
 
 export const SettingsView: React.FC = () => {
   const {
@@ -424,18 +425,13 @@ export const SettingsView: React.FC = () => {
                   className="p-4 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between gap-3 text-xs"
                 >
                   <div className="flex items-center gap-3">
-                    {u.avatarUrl && u.avatarUrl.trim() !== '' ? (
-                      <img
-                        src={u.avatarUrl}
-                        alt={u.name}
-                        referrerPolicy="no-referrer"
-                        className="w-10 h-10 rounded-full object-cover border border-slate-300"
-                      />
-                    ) : (
-                      <div className="w-10 h-10 rounded-full bg-slate-900 text-white font-bold flex items-center justify-center text-xs">
-                        {u.initials || 'U'}
-                      </div>
-                    )}
+                    <UserAvatar
+                      avatarUrl={u.avatarUrl}
+                      name={u.name}
+                      initials={u.initials}
+                      className="w-10 h-10 rounded-full border border-slate-300"
+                      fallbackClassName="text-xs bg-slate-900 text-white"
+                    />
                     <div>
                       <div className="font-bold text-slate-900 flex items-center gap-2">
                         <span>{u.name}</span>

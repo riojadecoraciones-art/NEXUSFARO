@@ -19,6 +19,7 @@ import {
   Database,
 } from 'lucide-react';
 import { formatARS } from '../utils/currency';
+import { UserAvatar } from './UserAvatar';
 
 interface NavbarProps {
   onSearchChange?: (term: string) => void;
@@ -241,24 +242,19 @@ export const Navbar: React.FC<NavbarProps> = ({
               <div className="text-[10px] text-slate-500 font-medium">{currentUser.roleTitle}</div>
             </div>
 
-            {currentUser.avatarUrl && currentUser.avatarUrl.trim() !== '' ? (
-              <img
-                src={currentUser.avatarUrl}
-                alt={currentUser.name}
-                referrerPolicy="no-referrer"
-                className="w-9 h-9 rounded-xl object-cover border border-slate-200 shadow-xs"
-              />
-            ) : (
-              <div className={`w-9 h-9 rounded-xl text-white font-bold flex items-center justify-center text-xs shadow-xs ${
+            <UserAvatar
+              avatarUrl={currentUser.avatarUrl}
+              name={currentUser.name}
+              initials={currentUser.initials}
+              className="w-9 h-9 rounded-xl border border-slate-200 shadow-xs"
+              fallbackClassName={`text-xs text-white ${
                 currentUser.role === 'SUPERADMIN'
                   ? 'bg-amber-600'
                   : currentUser.role === 'DUEÑO'
                   ? 'bg-slate-900'
                   : 'bg-blue-600'
-              }`}>
-                {currentUser.initials || 'U'}
-              </div>
-            )}
+              }`}
+            />
 
             <ChevronDown className="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-600" />
           </button>
@@ -306,18 +302,13 @@ export const Navbar: React.FC<NavbarProps> = ({
                         }`}
                       >
                         <div className="flex items-center gap-2.5">
-                          {user.avatarUrl && user.avatarUrl.trim() !== '' ? (
-                            <img
-                              src={user.avatarUrl}
-                              alt={user.name}
-                              referrerPolicy="no-referrer"
-                              className="w-7 h-7 rounded-lg object-cover border border-slate-200"
-                            />
-                          ) : (
-                            <div className="w-7 h-7 rounded-lg bg-blue-100 text-blue-800 font-bold flex items-center justify-center text-[10px]">
-                              {user.initials}
-                            </div>
-                          )}
+                          <UserAvatar
+                            avatarUrl={user.avatarUrl}
+                            name={user.name}
+                            initials={user.initials}
+                            className="w-7 h-7 rounded-lg border border-slate-200"
+                            fallbackClassName="text-[10px] bg-blue-100 text-blue-800"
+                          />
                           <div>
                             <div className="font-semibold text-slate-900 leading-tight">{user.name}</div>
                             <div className="text-[10px] text-slate-500">{user.roleTitle}</div>

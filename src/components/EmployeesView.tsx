@@ -21,6 +21,7 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 import { User, UserRole } from '../types';
+import { UserAvatar } from './UserAvatar';
 
 export const EmployeesView: React.FC = () => {
   const {
@@ -197,22 +198,13 @@ export const EmployeesView: React.FC = () => {
                 {/* User Header */}
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-center gap-3">
-                    {user.avatarUrl && user.avatarUrl.trim() !== '' ? (
-                      <img
-                        src={user.avatarUrl}
-                        alt={user.name}
-                        className="w-12 h-12 rounded-xl object-cover border border-slate-200 shadow-xs"
-                        onError={(e) => {
-                          (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(
-                            user.name
-                          )}&background=0F172A&color=fff`;
-                        }}
-                      />
-                    ) : (
-                      <div className="w-12 h-12 rounded-xl bg-slate-900 text-white font-bold flex items-center justify-center text-sm shadow-xs">
-                        {user.initials || 'U'}
-                      </div>
-                    )}
+                    <UserAvatar
+                      avatarUrl={user.avatarUrl}
+                      name={user.name}
+                      initials={user.initials}
+                      className="w-12 h-12 rounded-xl border border-slate-200 shadow-xs"
+                      fallbackClassName="text-sm bg-slate-900 text-white"
+                    />
                     <div>
                       <div className="flex items-center gap-2">
                         <h3 className="font-black text-slate-900 text-base leading-tight">
