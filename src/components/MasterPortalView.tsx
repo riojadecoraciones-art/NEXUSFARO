@@ -54,6 +54,7 @@ export const MasterPortalView: React.FC = () => {
     deleteStoreTenant,
     provisionStoreTerminal,
     impersonateStore,
+    isImpersonationLoading,
     addUser,
     updateUser,
     deleteUser,
@@ -374,8 +375,11 @@ export const MasterPortalView: React.FC = () => {
           <div className="flex items-center gap-3">
             <button
               onClick={() => {
-                // Sólo hay algo para auditar si existe al menos un comercio dado de alta.
-                if (storeTenants[0]) impersonateStore(storeTenants[0].id);
+                // Antes esto auditaba en silencio a storeTenants[0] (el primero
+                // de la lista) como efecto secundario de un simple atajo de
+                // navegación — ahora que auditar trae datos reales del
+                // comercio, hacerlo sin que el operador lo haya elegido a
+                // propósito sería mostrarle el negocio de un cliente al azar.
                 setActiveView('pos');
               }}
               className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl shadow-md transition-all flex items-center gap-2"
@@ -618,14 +622,21 @@ export const MasterPortalView: React.FC = () => {
                     <div className="bg-slate-50/90 p-4 px-6 border-t border-slate-200 flex items-center justify-between gap-2">
                       <button
                         onClick={() => {
+                          // impersonateStore ahora trae datos reales (puede
+                          // fallar) y avisa éxito/error por su cuenta — antes
+                          // este botón mostraba "listo" y navegaba igual
+                          // aunque la carga fallara.
                           impersonateStore(store.id);
-                          showToast(`Has ingresado en Modo Asistencia para "${store.name}"`, 'success');
-                          setActiveView('dashboard');
                         }}
-                        className="flex-1 py-2 px-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-1.5"
+                        disabled={isImpersonationLoading}
+                        className="flex-1 py-2 px-3 bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-1.5"
                         title="Ingresar a la tienda de este cliente para ayudarle a ver sus números y gestionar sus productos"
                       >
-                        <Wrench className="w-3.5 h-3.5 text-amber-400" />
+                        {isImpersonationLoading ? (
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <Wrench className="w-3.5 h-3.5 text-amber-400" />
+                        )}
                         <span>Asistir a este Negocio</span>
                       </button>
 

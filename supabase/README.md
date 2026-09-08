@@ -177,13 +177,40 @@ set raw_app_meta_data = raw_app_meta_data
 where email = '<email-de-la-terminal-nueva>';
 ```
 
+## "Asistir a este Negocio" (auditoría de soporte)
+
+El botón "Asistir a este Negocio" del Portal Maestro trae los datos
+operativos reales del comercio elegido (ventas, productos, categorías,
+gastos fijos, caja, stock, tickets aparcados, alertas y su configuración) —
+no sólo cambia el nombre mostrado en pantalla. La sesión de Supabase del
+operador sigue siendo la suya propia (acotada por RLS a su propio comercio,
+como cualquier otra); ver los datos de otro comercio pasa por la Edge
+Function `get-store-snapshot`, que:
+
+1. Verifica con `auth.getUser()` que quien llama tiene sesión real y
+   `app_metadata.role === 'superadmin'` — mismo chequeo que
+   `provision-store-terminal`. Sin esto, cualquier comercio cliente podría
+   pedir los datos de otro.
+2. Recién ahí lee (con `service_role`, que bypassa RLS) los datos del
+   comercio pedido — lectura pura, no inserta ni modifica nada del cliente.
+3. Deja un registro en `superadmin_audit_log` (comercio auditado, quién y
+   cuándo) — visible sólo para `role=superadmin`. Es la única forma de
+   detectar después si esa sesión llegó a recorrer todo el listado de
+   comercios.
+
+**Es de sólo lectura a propósito.** Ninguna policy de las 12 tablas
+operativas se relajó (eso hubiera dejado a la sesión del operador con
+acceso permanente a todos los comercios, no sólo mientras elige auditar a
+uno). En cambio, mientras `isImpersonating` está activo, cada función que
+escribe datos (`AppContext.tsx`) se corta con un aviso — de lo contrario,
+cualquier alta o baja durante la auditoría se hubiera guardado de verdad,
+pero en el comercio del *operador*, no en el del cliente que está mirando.
+No incluye la lista de empleados/PIN del comercio auditado (dato sensible,
+fuera de lo pedido); la sección "Empleados" se oculta del menú mientras se
+audita.
+
 ### Lo que queda pendiente para más adelante (Fase 2, no construido)
 
-- Que el operador de la plataforma pueda ver los datos operativos (ventas,
-  productos) de un comercio cliente sin salir de su propia sesión —hoy
-  "Asistir a este Negocio" sólo cambia el branding mostrado, no el alcance
-  real de los datos, porque la sesión de Supabase sigue siendo la de la
-  terminal del operador—.
 - Reportes agregados reales entre comercios (hoy "Facturación (tu
   comercio)" y las demás tarjetas del Portal Maestro muestran sólo los
   números del propio comercio del operador, con la etiqueta actualizada

@@ -67,10 +67,10 @@ etc. quedan aislados por comercio a nivel de base de datos (RLS), no sólo
 por lo que muestra la pantalla. La terminal de cada comercio se etiqueta una
 vez con el id de su comercio; de ahí en más todo queda acotado sola.
 
-El Portal Maestro (rol SUPERADMIN) da de alta nuevos comercios y lista el
-directorio completo — pero, por ahora, sin ver los datos operativos de cada
-uno (eso es trabajo a futuro). Ver [`supabase/README.md`](supabase/README.md)
-para el mecanismo completo y los pasos para dar de alta un comercio nuevo.
+El Portal Maestro (rol SUPERADMIN) da de alta nuevos comercios, crea sus
+cuentas de terminal, y puede "Asistir a este Negocio" para ver sus datos
+operativos reales con fines de soporte (de sólo lectura). Ver
+[`supabase/README.md`](supabase/README.md) para el mecanismo completo.
 
 ## Base de datos
 

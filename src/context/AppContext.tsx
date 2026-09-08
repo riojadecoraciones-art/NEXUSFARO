@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   User,
   Product,
@@ -172,9 +172,10 @@ interface AppContextType {
     terminalEmail: string
   ) => Promise<{ success: boolean; email?: string; password?: string; message: string }>;
   loginMasterSuperAdmin: (password: string) => Promise<{ success: boolean; message: string }>;
-  impersonateStore: (storeId: string) => void;
-  exitImpersonation: () => void;
+  impersonateStore: (storeId: string) => Promise<void>;
+  exitImpersonation: () => Promise<void>;
   isImpersonating: boolean;
+  isImpersonationLoading: boolean;
 
   // Alerts & Notifications Drawer & Toasts
   alerts: AppAlert[];
@@ -242,6 +243,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // "se vea llena".
   const [storeTenants, setStoreTenants] = useState<StoreTenant[]>([]);
   const [isImpersonating, setIsImpersonating] = useState<boolean>(false);
+  const [isImpersonationLoading, setIsImpersonationLoading] = useState<boolean>(false);
 
   // 2. Inventory & Products
   const [products, setProducts] = useState<Product[]>(SEED_PRODUCTS);
@@ -662,6 +664,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // REALTIME SUBSCRIPTIONS
   // ==========================================
 
+  // Mientras se audita otro comercio, estas suscripciones siguen escuchando
+  // los cambios del comercio del OPERADOR (su sesión de Supabase nunca
+  // cambia). Sin este freno, una venta real en la propia caja del operador
+  // pisaría en pantalla los datos del cliente auditado con los suyos. Es un
+  // ref (no una dependencia del efecto) para no reconectar el canal cada vez
+  // que se entra/sale del modo auditoría.
+  const isImpersonatingRef = useRef(isImpersonating);
+  useEffect(() => {
+    isImpersonatingRef.current = isImpersonating;
+  }, [isImpersonating]);
+
   useEffect(() => {
     if (!hasTerminalSession) return;
 
@@ -671,6 +684,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         'postgres_changes',
         { event: '*', schema: 'public', table: 'products' },
         async () => {
+          if (isImpersonatingRef.current) return;
           try {
             const freshProducts = await productService.getAll();
             setProducts(freshProducts);
@@ -683,6 +697,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         'postgres_changes',
         { event: '*', schema: 'public', table: 'sales' },
         async () => {
+          if (isImpersonatingRef.current) return;
           try {
             const freshSales = await saleService.getAll();
             setSales(freshSales);
@@ -695,6 +710,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         'postgres_changes',
         { event: '*', schema: 'public', table: 'cash_shifts' },
         async () => {
+          if (isImpersonatingRef.current) return;
           try {
             const [freshShifts, freshActive] = await Promise.all([
               cashShiftService.getAll(),
@@ -711,6 +727,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         'postgres_changes',
         { event: '*', schema: 'public', table: 'fixed_expenses' },
         async () => {
+          if (isImpersonatingRef.current) return;
           try {
             const freshExpenses = await fixedExpenseService.getAll();
             setExpenses(freshExpenses);
@@ -723,6 +740,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         'postgres_changes',
         { event: '*', schema: 'public', table: 'store_settings' },
         async () => {
+          if (isImpersonatingRef.current) return;
           try {
             const freshSettings = await storeSettingsService.get();
             setStoreInfo(freshSettings);
@@ -737,6 +755,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         'postgres_changes',
         { event: '*', schema: 'public', table: 'parked_tickets' },
         async () => {
+          if (isImpersonatingRef.current) return;
           try {
             const freshParked = await parkedTicketService.getAll();
             setParkedTickets(freshParked);
@@ -751,6 +770,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         'postgres_changes',
         { event: '*', schema: 'public', table: 'cash_movements' },
         async () => {
+          if (isImpersonatingRef.current) return;
           try {
             const freshMovements = await cashShiftService.getAllMovements();
             setCashMovements(freshMovements);
@@ -1819,6 +1839,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // ==========================================
 
   const refundSale = async (saleId: string, reason?: string): Promise<boolean> => {
+    if (blockIfImpersonating()) return false;
     if (!currentUser) return false;
     if (currentUser.role !== 'DUEÑO' && !currentUser.canRefund) {
       showToast('No tienes permiso para realizar devoluciones o anular ventas', 'error');
@@ -2033,6 +2054,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const addStockReceipt = async (productId: string, quantityToAdd: number, reason: string) => {
+    if (blockIfImpersonating()) return;
     if (!currentUser) return;
     if (currentUser.role !== 'DUEÑO' && !currentUser.canManageInventory) {
       showToast('No tienes permiso para recibir mercadería', 'error');
@@ -2140,6 +2162,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const addProduct = async (productData: Omit<Product, 'id'>) => {
+    if (blockIfImpersonating()) return;
     try {
       const created = await productService.create(productData);
       setProducts((prev) => [created, ...prev]);
@@ -2156,6 +2179,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updateProduct = async (id: string, productData: Partial<Product>) => {
+    if (blockIfImpersonating()) return;
     try {
       await productService.update(id, productData);
     } catch (e) {
@@ -2182,6 +2206,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const deleteProduct = async (id: string): Promise<boolean> => {
+    if (blockIfImpersonating()) return false;
     if (!currentUser) return false;
     if (currentUser.role !== 'DUEÑO' && !currentUser.canManageInventory) {
       showToast('No tienes permiso para eliminar productos', 'error');
@@ -2228,6 +2253,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Category management
   const addCategory = async (name: string): Promise<boolean> => {
+    if (blockIfImpersonating()) return false;
     const trimmed = name.trim();
     if (!trimmed) {
       showToast('El nombre de la categoría no puede estar vacío', 'error');
@@ -2250,6 +2276,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updateCategory = async (oldName: string, newName: string): Promise<boolean> => {
+    if (blockIfImpersonating()) return false;
     const trimmed = newName.trim();
     if (!trimmed) {
       showToast('El nombre de la categoría no puede estar vacío', 'error');
@@ -2279,6 +2306,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const deleteCategory = async (name: string, fallbackCategory: string = 'General'): Promise<boolean> => {
+    if (blockIfImpersonating()) return false;
     if (categories.length <= 1) {
       showToast('Debe existir al menos una categoría en el sistema', 'warning');
       return false;
@@ -2310,6 +2338,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // ==========================================
 
   const dismissAlert = async (id: string) => {
+    if (blockIfImpersonating()) return;
     try {
       await appAlertService.delete(id);
     } catch (e) {
@@ -2319,6 +2348,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const markAlertAsRead = async (id: string) => {
+    if (blockIfImpersonating()) return;
     try {
       await appAlertService.markAsRead(id);
     } catch (e) {
@@ -2328,6 +2358,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const markAllAlertsAsRead = async () => {
+    if (blockIfImpersonating()) return;
     try {
       await appAlertService.markAllAsRead();
     } catch (e) {
@@ -2338,6 +2369,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const clearAllAlerts = async () => {
+    if (blockIfImpersonating()) return;
     try {
       await appAlertService.clearAll();
     } catch (e) {
@@ -2352,6 +2384,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // ==========================================
 
   const addExpense = async (expenseData: Omit<FixedExpense, 'id' | 'createdAt'>) => {
+    if (blockIfImpersonating()) return;
     try {
       const created = await fixedExpenseService.create(expenseData);
       setExpenses((prev) => [created, ...prev]);
@@ -2363,6 +2396,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updateExpense = async (id: string, updates: Partial<FixedExpense>) => {
+    if (blockIfImpersonating()) return;
     try {
       await fixedExpenseService.update(id, updates);
     } catch (e) {
@@ -2375,6 +2409,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const deleteExpense = async (id: string): Promise<boolean> => {
+    if (blockIfImpersonating()) return false;
     const target = expenses.find((e) => e.id === id);
     if (!target) return false;
 
@@ -2390,6 +2425,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const markExpenseAsPaid = async (id: string, paymentMethod: PaymentMethodType = 'TRANSFERENCIA_QR', amount?: number) => {
+    if (blockIfImpersonating()) return;
     const target = expenses.find((e) => e.id === id);
     const paidAmount = amount ?? (target ? target.amount : 0);
     const lastPaidDate = new Date().toISOString();
@@ -2423,6 +2459,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const markExpenseAsPending = async (id: string) => {
+    if (blockIfImpersonating()) return;
     try {
       await fixedExpenseService.update(id, { status: 'PENDIENTE' });
     } catch (e) {
@@ -2440,6 +2477,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // ==========================================
 
   const updateStoreInfo = async (updates: Partial<StoreInfo>) => {
+    if (blockIfImpersonating()) return;
     try {
       await storeSettingsService.update(updates);
     } catch (e) {
@@ -2568,30 +2606,80 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return res;
   };
 
-  const impersonateStore = (storeId: string) => {
+  /**
+   * Trae los datos operativos REALES del comercio elegido (ventas, productos,
+   * gastos, caja, etc.) vía la Edge Function get-store-snapshot, y recién
+   * ahí activa el modo auditoría. Antes esto sólo cambiaba el branding
+   * mostrado — la sesión de Supabase seguía siendo la del operador, así que
+   * por debajo del cartel de "viendo a otro comercio" se seguían viendo los
+   * propios datos. Si el snapshot falla, no se activa nada: mejor dejar al
+   * operador donde estaba que mostrarle un estado a medio armar.
+   *
+   * No trae empleados/PIN del comercio (fuera de alcance a propósito, ver
+   * get-store-snapshot). El branding usa los datos reales de store_settings
+   * cuando existen, y cae al directorio (stores) si el comercio todavía no
+   * cargó su propia configuración — mismo respaldo que ya usaba esta función
+   * antes de este cambio.
+   */
+  const impersonateStore = async (storeId: string): Promise<void> => {
+    if (isImpersonationLoading) return;
     const targetTenant = storeTenants.find((t) => t.id === storeId);
-    if (targetTenant) {
-      setIsImpersonating(true);
-      setStoreInfo({
-        storeName: targetTenant.name,
-        branchName: targetTenant.branchName,
-        brandSubtitle: 'Sucursal Auditada por Soporte Maestro',
-        cuit: targetTenant.cuit || '',
-        address: targetTenant.address || '',
-        phone: targetTenant.ownerPhone || '',
-        email: targetTenant.ownerEmail || '',
-        receiptFooter: 'Comprobante no válido como factura',
-      });
-      setActiveViewRaw('dashboard');
-      showToast(`Auditando sucursal: ${targetTenant.name}`, 'info', {
-        title: 'Modo Auditoría de Tienda',
-      });
+    if (!targetTenant) return;
+
+    setIsImpersonationLoading(true);
+    const res = await storeTenantService.getOperationalSnapshot(storeId);
+    setIsImpersonationLoading(false);
+
+    if (!res.success) {
+      const message = (res as { success: false; message: string }).message;
+      showToast(message, 'error');
+      return;
     }
+
+    const { snapshot } = res;
+
+    setStoreInfo({
+      storeName: snapshot.storeInfo?.storeName || targetTenant.name,
+      branchName: snapshot.storeInfo?.branchName || targetTenant.branchName,
+      // Marca visual fija de seguridad: aunque el resto del branding sea el
+      // real del cliente, esto deja inconfundible que se está auditando.
+      brandSubtitle: 'Sucursal Auditada por Soporte Maestro',
+      cuit: snapshot.storeInfo?.cuit || targetTenant.cuit || '',
+      address: snapshot.storeInfo?.address || targetTenant.address || '',
+      phone: snapshot.storeInfo?.phone || targetTenant.ownerPhone || '',
+      email: snapshot.storeInfo?.email || targetTenant.ownerEmail || '',
+      receiptFooter: 'Comprobante no válido como factura',
+    });
+    setCategories(snapshot.categories);
+    setProducts(snapshot.products);
+    setSales(snapshot.sales);
+    setStockMovements(snapshot.stockMovements);
+    setParkedTickets(snapshot.parkedTickets);
+    // shiftsHistory sólo guarda los turnos cerrados — el abierto se rastrea
+    // aparte en activeShift, mismo criterio que loadAllDataFromSupabase.
+    setShiftsHistory(snapshot.cashShifts.filter((s) => s.status === 'CERRADA'));
+    setActiveShift(snapshot.activeCashShift);
+    setCashMovements(snapshot.cashMovements);
+    setExpenses(snapshot.expenses);
+    setAlerts(snapshot.alerts);
+
+    setIsImpersonating(true);
+    setActiveViewRaw('dashboard');
+    showToast(`Auditando sucursal: ${targetTenant.name}`, 'info', {
+      title: 'Modo Auditoría de Tienda',
+    });
   };
 
-  const exitImpersonation = () => {
+  /**
+   * Vuelve a cargar todo desde loadAllDataFromSupabase en vez de reconstruir
+   * el estado propio a mano — así se restauran a la vez los datos reales del
+   * operador Y su branding real, sin duplicar esa lógica. Antes esto no
+   * pasaba: el nombre del negocio se quedaba mal hasta refrescar la página.
+   */
+  const exitImpersonation = async (): Promise<void> => {
     setIsImpersonating(false);
     setActiveViewRaw('master_portal');
+    await loadAllDataFromSupabase();
     showToast('Regresando al Portal Maestro', 'info');
   };
 
@@ -2856,6 +2944,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         impersonateStore,
         exitImpersonation,
         isImpersonating,
+        isImpersonationLoading,
 
         alerts,
         unreadAlertsCount,
