@@ -14,10 +14,19 @@
 const DELIMITER = ';';
 
 function escapeCsvField(value: string): string {
-  if (/[";\n\r]/.test(value)) {
-    return `"${value.replace(/"/g, '""')}"`;
+  // Un campo que arranca con =, +, -, @ o tab, Excel/Sheets lo puede
+  // interpretar como fórmula al abrir el archivo — un nombre de cajero o
+  // producto con ese contenido (cargado por cualquier empleado) podría
+  // ejecutar algo en la PC de quien exporta el reporte. Anteponer un
+  // apóstrofe neutraliza la fórmula sin cambiar el texto visible.
+  // https://owasp.org/www-community/attacks/CSV_Injection
+  const needsFormulaGuard = /^[=+\-@\t]/.test(value);
+  const guarded = needsFormulaGuard ? `'${value}` : value;
+
+  if (/[";\n\r]/.test(guarded)) {
+    return `"${guarded.replace(/"/g, '""')}"`;
   }
-  return value;
+  return guarded;
 }
 
 /** '1234.5' -> '1234,50': coma decimal, sin separador de miles ni símbolo de

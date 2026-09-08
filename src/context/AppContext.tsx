@@ -675,13 +675,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
    * El envío en sí lo hace una Edge Function (send-receipt-email): la clave
    * de Resend no puede vivir en el navegador, porque cualquiera que abra la
    * consola (F12) del cliente podría leerla y mandar correo en nombre del
-   * negocio. Acá sólo se arma el pedido con los mismos datos que ya se
-   * muestran en el comprobante en pantalla (storeInfo, ya cargado).
+   * negocio. Sólo se manda el número de ticket — la función busca la venta y
+   * los datos del negocio ella misma en la base (con la sesión de quien
+   * llama), en vez de confiar en lo que mande el cliente: así nadie puede
+   * pedir que se le mande por mail el comprobante de una venta ajena con un
+   * total distinto al real.
    */
   const sendReceiptEmail = useCallback(
     async (email: string, sale: Sale): Promise<{ success: boolean; message: string }> => {
       const { data, error } = await supabase.functions.invoke('send-receipt-email', {
-        body: { to: email, sale, storeInfo },
+        body: { to: email, ticketNumber: sale.ticketNumber },
       });
 
       if (error) {
@@ -695,7 +698,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       return { success: true, message: `Comprobante enviado a ${email}` };
     },
-    [storeInfo]
+    []
   );
 
   // Los datos se piden recién cuando hay sesión: sin ella el RLS los rechaza.

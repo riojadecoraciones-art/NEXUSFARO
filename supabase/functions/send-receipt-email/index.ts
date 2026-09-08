@@ -6,16 +6,17 @@
 // navegador (F12) podría leerla y mandar correo en nombre del negocio desde
 // afuera. Por eso el envío pasa por acá: la clave sólo vive en el servidor.
 //
-// Autenticación: se despliega con verify_jwt=true, así que el runtime de
-// Supabase ya rechaza cualquier llamada sin una sesión válida antes de que
-// este código se ejecute — no hace falta verificar el JWT a mano acá. Eso
-// alcanza porque el envío de un comprobante es una acción de nivel terminal
-// (cualquier caja con sesión puede hacerlo), no algo que dependa de qué
-// cajero esté en el POS.
-//
-// Formato del comprobante: se manda el mismo dato que ya se ve en pantalla
-// (Sale + StoreInfo), armado del lado del cliente que ya los tiene cargados
-// y validados — no hay que volver a consultarlos acá.
+// Antes esta función armaba el comprobante con el sale/storeInfo que mandaba
+// el cliente en el body, sin validar nada contra la base — verify_jwt=true
+// sólo prueba "hay una sesión real de ALGÚN comercio", no que esos datos
+// sean reales. Cualquier terminal autenticada podía mandar un storeInfo
+// inventado (nombre/CUIT de otro negocio) y montos/items fantasía, y hacer
+// que Resend lo entregara con la reputación de envío de la plataforma. Ahora
+// sólo se usa el `to` y el `ticketNumber` del pedido como clave de búsqueda;
+// el resto (montos, items, cajero, datos del comercio) se lee directo de la
+// base, acotado por RLS a la sesión que llama — no se puede pedir el
+// comprobante de una venta ajena ni inventar sus datos.
+import { createClient } from 'npm:@supabase/supabase-js@2';
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -72,8 +73,7 @@ interface StoreInfoPayload {
 
 interface RequestBody {
   to: string;
-  sale: SalePayload;
-  storeInfo: StoreInfoPayload;
+  ticketNumber: string;
 }
 
 const PAYMENT_METHOD_LABELS: Record<string, string> = {
@@ -92,7 +92,7 @@ function buildReceiptHtml(sale: SalePayload, store: StoreInfoPayload): string {
       (item) => `
         <tr>
           <td style="padding:6px 4px;border-bottom:1px solid #e2e8f0;">${escapeHtml(item.productName)}</td>
-          <td style="padding:6px 4px;border-bottom:1px solid #e2e8f0;text-align:center;">${item.quantity}</td>
+          <td style="padding:6px 4px;border-bottom:1px solid #e2e8f0;text-align:center;">${escapeHtml(String(item.quantity))}</td>
           <td style="padding:6px 4px;border-bottom:1px solid #e2e8f0;text-align:right;">${MONEY(item.unitPrice)}</td>
           <td style="padding:6px 4px;border-bottom:1px solid #e2e8f0;text-align:right;font-weight:bold;">${MONEY(item.total)}</td>
         </tr>`
@@ -193,14 +193,79 @@ Deno.serve(async (req: Request) => {
   if (!isValidEmail(to)) {
     return json({ error: 'El email de destino no es válido' }, 400);
   }
-  if (!body?.sale?.ticketNumber || !Array.isArray(body.sale.items)) {
-    return json({ error: 'Faltan datos de la venta' }, 400);
-  }
-  if (!body?.storeInfo?.storeName) {
-    return json({ error: 'Faltan datos del comercio' }, 400);
+  const ticketNumber = (body?.ticketNumber || '').trim();
+  if (!ticketNumber) {
+    return json({ error: 'Falta el número de ticket' }, 400);
   }
 
-  const html = buildReceiptHtml(body.sale, body.storeInfo);
+  // Cliente atado al JWT de quien llama (no service_role): las lecturas de
+  // abajo quedan acotadas por RLS a los datos del propio comercio de esa
+  // sesión, igual que cualquier lectura normal desde el navegador — no hace
+  // falta un chequeo de rol aparte, sólo confirmar que hay una sesión real.
+  const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
+  const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
+  const callerClient = createClient(SUPABASE_URL, ANON_KEY, {
+    global: { headers: { Authorization: req.headers.get('Authorization') ?? '' } },
+  });
+
+  const { data: callerData, error: callerError } = await callerClient.auth.getUser();
+  if (callerError || !callerData?.user) {
+    return json({ error: 'Sesión inválida' }, 401);
+  }
+
+  const { data: saleRow, error: saleError } = await callerClient
+    .from('sales')
+    .select('*')
+    .eq('ticket_number', ticketNumber)
+    .maybeSingle();
+
+  if (saleError || !saleRow) {
+    return json({ error: 'No se encontró esa venta' }, 404);
+  }
+
+  const { data: itemRows, error: itemsError } = await callerClient
+    .from('sale_items')
+    .select('*')
+    .eq('sale_id', saleRow.id);
+
+  if (itemsError) {
+    console.error('Error trayendo sale_items:', itemsError);
+    return json({ error: 'No se pudieron leer los productos de la venta' }, 500);
+  }
+
+  const { data: settingsRow } = await callerClient
+    .from('store_settings')
+    .select('*')
+    .maybeSingle();
+
+  const sale: SalePayload = {
+    ticketNumber: saleRow.ticket_number,
+    timestamp: saleRow.timestamp,
+    cashierName: saleRow.cashier_name,
+    items: (itemRows || []).map((row: any) => ({
+      productName: row.product_name,
+      quantity: Number(row.quantity) || 0,
+      unitPrice: Number(row.unit_price) || 0,
+      total: Number(row.total) || 0,
+    })),
+    subtotal: Number(saleRow.subtotal) || 0,
+    discountTotal: Number(saleRow.discount_total) || 0,
+    tax: Number(saleRow.tax) || 0,
+    total: Number(saleRow.total) || 0,
+    paymentMethod: saleRow.payment_method,
+    amountReceived: saleRow.amount_received !== null ? Number(saleRow.amount_received) : undefined,
+    changeGiven: saleRow.change_given !== null ? Number(saleRow.change_given) : undefined,
+  };
+
+  const storeInfo: StoreInfoPayload = {
+    storeName: settingsRow?.store_name || 'NEXUS FARO',
+    branchName: settingsRow?.branch_name || undefined,
+    address: settingsRow?.address || undefined,
+    cuit: settingsRow?.cuit || undefined,
+    receiptFooter: settingsRow?.receipt_footer || undefined,
+  };
+
+  const html = buildReceiptHtml(sale, storeInfo);
 
   // fetch() puede rechazar por un problema de red (DNS, timeout, Resend caído),
   // no sólo devolver un status no-2xx. Sin este try/catch, esa falla no
@@ -218,7 +283,7 @@ Deno.serve(async (req: Request) => {
       body: JSON.stringify({
         from: FROM_EMAIL,
         to: [to],
-        subject: `Comprobante de compra — ${body.sale.ticketNumber}`,
+        subject: `Comprobante de compra — ${sale.ticketNumber}`,
         html,
       }),
     });
