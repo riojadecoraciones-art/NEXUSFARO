@@ -1095,6 +1095,7 @@ export const storeTenantService = {
       status: row.status || 'ACTIVO',
       createdAt: row.created_at,
       terminalEmail: row.terminal_email || undefined,
+      paidUntil: row.paid_until || undefined,
     }));
   },
 
@@ -1112,6 +1113,7 @@ export const storeTenantService = {
         cuit: tenant.cuit || null,
         address: tenant.address || null,
         status: tenant.status || 'ACTIVO',
+        paid_until: tenant.paidUntil || null,
       })
       .select()
       .single();
@@ -1133,6 +1135,7 @@ export const storeTenantService = {
       status: data.status,
       createdAt: data.created_at,
       terminalEmail: data.terminal_email || undefined,
+      paidUntil: data.paid_until || undefined,
     };
   },
 
@@ -1149,6 +1152,7 @@ export const storeTenantService = {
     if (updates.cuit !== undefined) dbUpdates.cuit = updates.cuit;
     if (updates.address !== undefined) dbUpdates.address = updates.address;
     if (updates.status !== undefined) dbUpdates.status = updates.status;
+    if (updates.paidUntil !== undefined) dbUpdates.paid_until = updates.paidUntil || null;
 
     const { error } = await supabase.from('stores').update(dbUpdates).eq('id', id);
     if (error) {
@@ -1163,6 +1167,29 @@ export const storeTenantService = {
       console.error('Error deleting store tenant:', error);
       throw error;
     }
+  },
+
+  /**
+   * A diferencia del resto de este service (sólo para la terminal
+   * superadmin), esto lo puede llamar CUALQUIER terminal: sirve para que
+   * cada comercio pueda chequear su propio estado de pago y bloquearse solo
+   * si está SUSPENDIDO. La policy "lee_su_propio_comercio" de RLS acota el
+   * resultado a la única fila que le corresponde a la sesión que llama —
+   * nunca ve el resto del directorio.
+   */
+  async getOwnStoreStatus(): Promise<{ status: string; paidUntil: string | null } | null> {
+    const { data, error } = await supabase
+      .from('stores')
+      .select('status, paid_until')
+      .maybeSingle();
+
+    if (error) {
+      console.error('Error checking own store status:', error);
+      return null;
+    }
+    if (!data) return null;
+
+    return { status: data.status || 'ACTIVO', paidUntil: data.paid_until || null };
   },
 
   /**

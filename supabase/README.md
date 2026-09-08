@@ -209,9 +209,40 @@ No incluye la lista de empleados/PIN del comercio auditado (dato sensible,
 fuera de lo pedido); la sección "Empleados" se oculta del menú mientras se
 audita.
 
+## Cobro a comercios clientes (manual)
+
+El cobro en sí queda **fuera del sistema**: se manda el link de pago de
+Mercado Pago por WhatsApp o el medio que sea, y cuando llega el pago se
+actualiza el estado a mano desde el Portal Maestro (Negocios → Editar
+Negocio). No hay integración con ninguna API de pagos ni cobro recurrente
+automático — a propósito, para no meter esa complejidad (webhooks,
+reintentos, cancelaciones) antes de que la cantidad de clientes lo justifique.
+
+- **`stores.status = 'SUSPENDIDO'` ahora bloquea de verdad.** Antes era sólo
+  una etiqueta visual; ahora, si se marca un comercio como SUSPENDIDO, esa
+  terminal ve una pantalla de "cuenta suspendida" en vez del login normal
+  (`StoreSuspendedScreen.tsx`) — no puede entrar hasta que se lo vuelva a
+  marcar ACTIVO.
+- **`stores.paid_until`** es sólo informativo (se ve en la card de cada
+  comercio y se edita en el mismo formulario) — un recordatorio de cuándo
+  hay que volver a cobrar, no dispara nada por sí solo.
+- Para que cada terminal pueda chequear su propio estado sin poder leer el
+  directorio completo de comercios (`stores` seguía reservada a
+  `role=superadmin`), se sumó una policy de sólo lectura acotada a la propia
+  fila: `id = (auth.jwt() -> 'app_metadata' ->> 'store_id')`. Postgres
+  combina policies permisivas del mismo comando con OR, así que esto
+  convive con `solo_superadmin` sin debilitarla — cada terminal sigue sin
+  poder ver los datos de otros comercios, sólo el propio `status`.
+- La terminal marcada `role=superadmin` nunca se autobloquea por esto (si
+  alguna vez quedara SUSPENDIDO por error, seguiría pudiendo entrar al
+  Portal Maestro para corregirlo).
+
 ### Lo que queda pendiente para más adelante (Fase 2, no construido)
 
 - Reportes agregados reales entre comercios (hoy "Facturación (tu
   comercio)" y las demás tarjetas del Portal Maestro muestran sólo los
   números del propio comercio del operador, con la etiqueta actualizada
   para que quede claro).
+- Si el volumen de clientes lo justifica más adelante: cobro recurrente
+  automático vía la API de Mercado Pago (Suscripciones) en vez del proceso
+  manual de arriba.

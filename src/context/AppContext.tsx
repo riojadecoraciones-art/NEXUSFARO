@@ -48,6 +48,10 @@ interface AppContextType {
   hasTerminalSession: boolean;
   isCheckingTerminalSession: boolean;
   terminalEmail: string | null;
+  // Estado de pago del comercio de esta terminal (no aplica a la terminal
+  // superadmin, que nunca se autobloquea por esto).
+  isCheckingStoreStatus: boolean;
+  isStoreSuspended: boolean;
   signInTerminal: (email: string, password: string) => Promise<{ success: boolean; message: string }>;
   signOutTerminal: () => Promise<void>;
 
@@ -230,6 +234,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [hasTerminalSession, setHasTerminalSession] = useState<boolean>(false);
   const [isCheckingTerminalSession, setIsCheckingTerminalSession] = useState<boolean>(true);
   const [terminalEmail, setTerminalEmail] = useState<string | null>(null);
+  const [terminalRole, setTerminalRole] = useState<string | null>(null);
+  const [isCheckingStoreStatus, setIsCheckingStoreStatus] = useState<boolean>(true);
+  const [isStoreSuspended, setIsStoreSuspended] = useState<boolean>(false);
 
   // 1. Auth & Navigation
   const [users, setUsers] = useState<User[]>(SEED_USERS);
@@ -573,6 +580,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (!activo) return;
         setHasTerminalSession(Boolean(data.session));
         setTerminalEmail(data.session?.user?.email ?? null);
+        setTerminalRole((data.session?.user?.app_metadata as Record<string, unknown> | undefined)?.role as string ?? null);
       })
       .catch((e) => {
         console.error('No se pudo leer la sesión de la terminal:', e);
@@ -584,6 +592,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
       setHasTerminalSession(Boolean(session));
       setTerminalEmail(session?.user?.email ?? null);
+      setTerminalRole((session?.user?.app_metadata as Record<string, unknown> | undefined)?.role as string ?? null);
     });
 
     return () => {
@@ -591,6 +600,44 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       listener.subscription.unsubscribe();
     };
   }, []);
+
+  // ==========================================
+  // ESTADO DE PAGO DEL COMERCIO
+  // ==========================================
+  //
+  // La terminal superadmin (el operador de la plataforma) nunca se
+  // autobloquea por esto — este chequeo es para que un comercio CLIENTE
+  // deje de poder entrar si su cuenta quedó SUSPENDIDO.
+  useEffect(() => {
+    if (!hasTerminalSession) {
+      setIsCheckingStoreStatus(false);
+      return;
+    }
+    if (terminalRole === 'superadmin') {
+      setIsCheckingStoreStatus(false);
+      setIsStoreSuspended(false);
+      return;
+    }
+
+    let activo = true;
+    setIsCheckingStoreStatus(true);
+    storeTenantService
+      .getOwnStoreStatus()
+      .then((res) => {
+        if (!activo) return;
+        setIsStoreSuspended(res?.status === 'SUSPENDIDO');
+      })
+      .catch((e) => {
+        console.error('No se pudo verificar el estado de pago del comercio:', e);
+      })
+      .finally(() => {
+        if (activo) setIsCheckingStoreStatus(false);
+      });
+
+    return () => {
+      activo = false;
+    };
+  }, [hasTerminalSession, terminalRole]);
 
   const signInTerminal = useCallback(
     async (email: string, password: string): Promise<{ success: boolean; message: string }> => {
@@ -2841,6 +2888,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         hasTerminalSession,
         isCheckingTerminalSession,
         terminalEmail,
+        isCheckingStoreStatus,
+        isStoreSuspended,
         signInTerminal,
         signOutTerminal,
         sendReceiptEmail,

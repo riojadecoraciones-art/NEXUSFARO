@@ -94,6 +94,7 @@ export const MasterPortalView: React.FC = () => {
     cuit: string;
     address: string;
     status: 'ACTIVO' | 'SUSPENDIDO' | 'EN_PRUEBA';
+    paidUntil: string;
   }>({
     name: '',
     branchName: 'Sucursal Principal',
@@ -103,6 +104,7 @@ export const MasterPortalView: React.FC = () => {
     cuit: '',
     address: '',
     status: 'ACTIVO',
+    paidUntil: '',
   });
 
   // User Form state
@@ -184,6 +186,7 @@ export const MasterPortalView: React.FC = () => {
       cuit: '',
       address: '',
       status: 'ACTIVO',
+      paidUntil: '',
     });
     setIsNewStoreModalOpen(true);
   };
@@ -199,6 +202,7 @@ export const MasterPortalView: React.FC = () => {
       cuit: store.cuit || '',
       address: store.address || '',
       status: store.status,
+      paidUntil: store.paidUntil || '',
     });
     setIsNewStoreModalOpen(true);
   };
@@ -552,12 +556,20 @@ export const MasterPortalView: React.FC = () => {
                           className={`px-2.5 py-0.5 rounded-md text-[11px] font-bold ${
                             store.status === 'ACTIVO'
                               ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                              : store.status === 'SUSPENDIDO'
+                              ? 'bg-rose-50 text-rose-700 border border-rose-200'
                               : 'bg-amber-50 text-amber-700 border border-amber-200'
                           }`}
                         >
                           {store.status}
                         </span>
                       </div>
+
+                      {store.paidUntil && (
+                        <p className="text-[11px] text-slate-400 -mt-3 mb-4">
+                          Pagado hasta: <span className="font-semibold text-slate-600">{store.paidUntil}</span>
+                        </p>
+                      )}
 
                       {/* Owner Information Box */}
                       <div className="bg-slate-50 rounded-xl p-3.5 space-y-2 text-xs text-slate-600 border border-slate-200/60 mb-5">
@@ -1007,6 +1019,24 @@ export const MasterPortalView: React.FC = () => {
                   </select>
                 </div>
               </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Pagado hasta <span className="font-normal text-slate-400">(informativo, para recordarte a quién cobrarle)</span>
+                </label>
+                <input
+                  type="date"
+                  value={storeForm.paidUntil}
+                  onChange={(e) => setStoreForm({ ...storeForm, paidUntil: e.target.value })}
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 font-medium"
+                />
+              </div>
+
+              {storeForm.status === 'SUSPENDIDO' && (
+                <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-[11px] text-rose-800 font-semibold">
+                  Marcar SUSPENDIDO bloquea de verdad: la terminal de este comercio no va a poder entrar hasta que lo vuelvas a poner ACTIVO.
+                </div>
+              )}
 
               <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
                 <button

@@ -9,6 +9,7 @@ import { Toast } from './components/Toast';
 import { NotificationDrawer } from './components/NotificationDrawer';
 import { LoginScreen } from './components/LoginScreen';
 import { TerminalAuthScreen } from './components/TerminalAuthScreen';
+import { StoreSuspendedScreen } from './components/StoreSuspendedScreen';
 import { Sidebar } from './components/Sidebar';
 import { Navbar } from './components/Navbar';
 import { POSView } from './components/POSView';
@@ -37,6 +38,8 @@ const MainLayout: React.FC = () => {
     storeInfo,
     hasTerminalSession,
     isCheckingTerminalSession,
+    isCheckingStoreStatus,
+    isStoreSuspended,
     isImpersonating,
     exitImpersonation,
   } = useApp();
@@ -60,6 +63,28 @@ const MainLayout: React.FC = () => {
     return (
       <>
         <TerminalAuthScreen />
+        <Toast />
+      </>
+    );
+  }
+
+  // Mismo criterio que isCheckingTerminalSession: evitar el parpadeo de la
+  // pantalla de PIN antes de saber si este comercio puede entrar.
+  if (isCheckingStoreStatus) {
+    return (
+      <div className="fixed inset-0 flex items-center justify-center bg-slate-950 text-slate-300">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 border-2 border-slate-600 border-t-blue-500 rounded-full animate-spin" />
+          <span className="text-xs font-semibold tracking-wide">Verificando cuenta…</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (isStoreSuspended) {
+    return (
+      <>
+        <StoreSuspendedScreen />
         <Toast />
       </>
     );

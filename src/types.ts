@@ -243,6 +243,8 @@ export interface StoreTenant {
   activeEmployeesCount?: number;
   /** Email de la cuenta de terminal (Supabase Auth) ya aprovisionada para este comercio, si la hay. */
   terminalEmail?: string;
+  /** Sólo informativo: hasta cuándo pagó. No dispara nada por sí solo — el bloqueo real es `status === 'SUSPENDIDO'`. */
+  paidUntil?: string;
 }
 
 /**
