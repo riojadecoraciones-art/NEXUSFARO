@@ -364,6 +364,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [isSupportModalOpen, setIsSupportModalOpen] = useState<boolean>(false);
   const [isMasterAuthModalOpen, setIsMasterAuthModalOpen] = useState<boolean>(false);
 
+  /**
+   * Apaga el modo soporte (acceso a nivel Portal Maestro sin ser el usuario
+   * SUPERADMIN) y su rastro en sessionStorage, que es lo que lo revive si se
+   * refresca la página. Sin esto último, login/switchUser podían dejar el
+   * estado en memoria en `false` pero la próxima carga de página lo volvía a
+   * poner en `true` leyendo el valor viejo.
+   */
+  const clearSupportMode = useCallback(() => {
+    setIsSupportMode(false);
+    try {
+      sessionStorage.removeItem('rioja_support_mode');
+    } catch (e) {
+      console.error(e);
+    }
+  }, []);
+
   // 9. Alerts, Notification Panel & Toasts
   const [alerts, setAlerts] = useState<AppAlert[]>(SEED_ALERTS);
   const [isNotificationsPanelOpen, setIsNotificationsPanelOpen] = useState<boolean>(false);
@@ -958,22 +974,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (targetUser.role === 'SUPERADMIN') {
       setIsSupportMode(true);
       setActiveViewRaw('master_portal');
-    } else if (targetUser.role === 'DUEÑO') {
-      setActiveViewRaw('dashboard');
     } else {
-      setActiveViewRaw('pos');
+      // Si isSupportMode venía prendido de una sesión anterior en esta misma
+      // pestaña (p.ej. el Dueño activó Modo Soporte y después alguien puso
+      // el PIN de un cajero sin pasar por "Salir"), no puede quedar pegado:
+      // el cajero heredaría acceso de Portal Maestro sin haber puesto la
+      // contraseña maestra.
+      clearSupportMode();
+      setActiveViewRaw(targetUser.role === 'DUEÑO' ? 'dashboard' : 'pos');
     }
     return true;
   };
 
   const logout = () => {
     setCurrentUser(null);
-    setIsSupportMode(false);
-    try {
-      sessionStorage.removeItem('rioja_support_mode');
-    } catch (e) {
-      console.error(e);
-    }
+    clearSupportMode();
     setIsLoginModalOpen(true);
     showToast('Sesión cerrada correctamente', 'info');
   };
@@ -995,13 +1010,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (targetUser.role === 'SUPERADMIN') {
       setIsSupportMode(true);
       setActiveViewRaw('master_portal');
-    } else if (targetUser.role === 'DUEÑO') {
-      if (activeView === 'pos' && cart.length === 0) {
-        setActiveViewRaw('dashboard');
-      }
     } else {
-      if (!canAccessView(activeView)) {
-        setActiveViewRaw('pos');
+      // Mismo motivo que en login(): cambiar a un usuario que no es
+      // SUPERADMIN tiene que apagar el modo soporte, no heredarlo.
+      clearSupportMode();
+      if (targetUser.role === 'DUEÑO') {
+        if (activeView === 'pos' && cart.length === 0) {
+          setActiveViewRaw('dashboard');
+        }
+      } else {
+        if (!canAccessView(activeView)) {
+          setActiveViewRaw('pos');
+        }
       }
     }
     return true;
@@ -2777,12 +2797,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const deactivateSupportMode = () => {
-    setIsSupportMode(false);
-    try {
-      sessionStorage.removeItem('rioja_support_mode');
-    } catch (e) {
-      console.error(e);
-    }
+    clearSupportMode();
     showToast('Modo Soporte Técnico finalizado', 'info');
   };
 
