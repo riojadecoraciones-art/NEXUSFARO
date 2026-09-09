@@ -39,6 +39,10 @@ Hay dos niveles, y conviene no confundirlos:
    la caja. Los PIN se guardan hasheados (PBKDF2-SHA256) y no se pueden mostrar:
    para darle acceso a alguien se le asigna un PIN nuevo.
 
+Dar de alta, editar (rol, permisos) o borrar un empleado, o cambiarle el PIN,
+pide confirmar con el PIN de un Dueño — verificado del lado del servidor, no
+sólo por qué pantalla lo muestra. Ver [`supabase/README.md`](supabase/README.md#alta-edición-y-borrado-de-empleados).
+
 ### Crear la cuenta de la terminal
 
 En Supabase → Authentication → Users → *Add user*. Por ejemplo

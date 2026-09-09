@@ -15,6 +15,17 @@ export interface User {
   storeId?: string; // Optional reference to specific store tenant
 }
 
+/**
+ * Prueba de que quien pide un cambio sensible sobre otro usuario (rol, PIN,
+ * permisos) está autorizado: el PIN de un Dueño/Superadmin del mismo
+ * comercio, o la contraseña maestra (para "olvidé mi PIN"). Se verifica del
+ * lado del servidor en la Edge Function manage-employee, nunca en el cliente.
+ */
+export interface EmployeeAuthProof {
+  ownerPin?: string;
+  masterPassword?: string;
+}
+
 export type ProductCategory = string;
 
 export interface Product {

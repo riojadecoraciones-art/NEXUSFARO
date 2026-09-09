@@ -78,6 +78,8 @@ export const MasterPortalView: React.FC = () => {
 
   const [isNewUserModalOpen, setIsNewUserModalOpen] = useState<boolean>(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [userConfirmPin, setUserConfirmPin] = useState<string>('');
+  const [isSavingUser, setIsSavingUser] = useState<boolean>(false);
 
   // Modal: aprovisionar la cuenta de terminal de un comercio
   const [provisioningStore, setProvisioningStore] = useState<StoreTenant | null>(null);
@@ -289,6 +291,7 @@ export const MasterPortalView: React.FC = () => {
       canRefund: false,
       canManageInventory: false,
     });
+    setUserConfirmPin('');
     setIsNewUserModalOpen(true);
   };
 
@@ -305,6 +308,7 @@ export const MasterPortalView: React.FC = () => {
       canRefund: user.canRefund,
       canManageInventory: user.canManageInventory,
     });
+    setUserConfirmPin('');
     setIsNewUserModalOpen(true);
   };
 
@@ -320,36 +324,64 @@ export const MasterPortalView: React.FC = () => {
       showToast('El PIN debe contener exactamente 4 dígitos numéricos', 'error');
       return;
     }
+    if (!/^\d{4}$/.test(userConfirmPin)) {
+      showToast('Ingresá tu propio PIN de Dueño/Superadmin para confirmar', 'error');
+      return;
+    }
+
+    const authProof = { ownerPin: userConfirmPin };
+    setIsSavingUser(true);
+    let ok = true;
 
     if (editingUser) {
-      await updateUser(editingUser.id, {
-        name: userForm.name,
-        email: userForm.email || undefined,
-        role: userForm.role,
-        roleTitle: userForm.roleTitle,
-        canDiscount: userForm.canDiscount,
-        canRefund: userForm.canRefund,
-        canManageInventory: userForm.canManageInventory,
-      });
-      // updateUserPin hashea el PIN; updateUser nunca debe recibirlo en claro.
-      if (pinTouched) {
-        await updateUserPin(editingUser.id, userForm.pin);
+      ok = await updateUser(
+        editingUser.id,
+        {
+          name: userForm.name,
+          email: userForm.email || undefined,
+          role: userForm.role,
+          roleTitle: userForm.roleTitle,
+          canDiscount: userForm.canDiscount,
+          canRefund: userForm.canRefund,
+          canManageInventory: userForm.canManageInventory,
+        },
+        authProof
+      );
+      // updateUserPin hashea el PIN del lado del servidor; updateUser nunca lo recibe.
+      if (ok && pinTouched) {
+        ok = await updateUserPin(editingUser.id, userForm.pin, authProof);
       }
-      showToast(`Usuario ${userForm.name} actualizado`, 'success');
+      if (ok) showToast(`Usuario ${userForm.name} actualizado`, 'success');
     } else {
-      await addUser({
-        name: userForm.name,
-        email: userForm.email || undefined,
-        role: userForm.role,
-        roleTitle: userForm.roleTitle,
-        pin: userForm.pin,
-        avatarUrl: '',
-        canDiscount: userForm.canDiscount,
-        canRefund: userForm.canRefund,
-        canManageInventory: userForm.canManageInventory,
-      });
+      ok = await addUser(
+        {
+          name: userForm.name,
+          email: userForm.email || undefined,
+          role: userForm.role,
+          roleTitle: userForm.roleTitle,
+          pin: userForm.pin,
+          avatarUrl: '',
+          canDiscount: userForm.canDiscount,
+          canRefund: userForm.canRefund,
+          canManageInventory: userForm.canManageInventory,
+        },
+        authProof
+      );
     }
+
+    setIsSavingUser(false);
+    if (!ok) return;
     setIsNewUserModalOpen(false);
+  };
+
+  const handleDeleteUser = async (user: User) => {
+    if (!confirm(`¿Eliminar al usuario ${user.name}?`)) return;
+    const ownerPin = window.prompt('Tu PIN de Dueño/Superadmin, para confirmar:') || '';
+    if (!/^\d{4}$/.test(ownerPin)) {
+      showToast('PIN inválido: no se eliminó el usuario', 'error');
+      return;
+    }
+    await deleteUser(user.id, { ownerPin });
   };
 
   return (
@@ -799,11 +831,7 @@ export const MasterPortalView: React.FC = () => {
                             </button>
                             {users.length > 1 && user.id !== currentUser?.id && (
                               <button
-                                onClick={() => {
-                                  if (confirm(`¿Eliminar al usuario ${user.name}?`)) {
-                                    deleteUser(user.id);
-                                  }
-                                }}
+                                onClick={() => handleDeleteUser(user)}
                                 className="p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition-colors"
                                 title="Eliminar cuenta"
                               >
@@ -1313,6 +1341,21 @@ export const MasterPortalView: React.FC = () => {
                 </div>
               )}
 
+              <div className="pt-3 border-t border-slate-100">
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Tu PIN de Dueño/Superadmin (para confirmar)
+                </label>
+                <input
+                  type="password"
+                  maxLength={4}
+                  required
+                  value={userConfirmPin}
+                  onChange={(e) => setUserConfirmPin(e.target.value.replace(/\D/g, ''))}
+                  placeholder="••••"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-purple-500/20 text-center tracking-widest text-base"
+                />
+              </div>
+
               <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
                 <button
                   type="button"
@@ -1323,9 +1366,10 @@ export const MasterPortalView: React.FC = () => {
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2.5 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl text-xs shadow-md"
+                  disabled={isSavingUser}
+                  className="px-5 py-2.5 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl text-xs shadow-md disabled:opacity-50"
                 >
-                  {editingUser ? 'Guardar Cambios' : 'Crear Usuario'}
+                  {isSavingUser ? 'Guardando…' : editingUser ? 'Guardar Cambios' : 'Crear Usuario'}
                 </button>
               </div>
             </form>

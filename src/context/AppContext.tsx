@@ -18,10 +18,12 @@ import {
   StoreInfo,
   MasterAuthConfig,
   StoreTenant,
+  UserRole,
+  EmployeeAuthProof,
 } from '../types';
 import { SEED_USERS, SEED_PRODUCTS, SEED_SALES, SEED_ALERTS } from '../mockData';
 import { sounds } from '../utils/soundEffects';
-import { hashSecret, isHashed, verifySecret } from '../utils/crypto';
+import { isHashed, verifySecret } from '../utils/crypto';
 import { supabase } from '../lib/supabase';
 import {
   userService,
@@ -70,10 +72,29 @@ interface AppContextType {
   requestUserSwitch: (userId: string) => void;
   pendingSwitchUserId: string | null;
   clearPendingSwitch: () => void;
-  addUser: (userData: Omit<User, 'id' | 'initials'>) => Promise<void>;
-  updateUser: (id: string, userData: Partial<User>) => Promise<void>;
-  deleteUser: (id: string) => Promise<boolean>;
-  updateUserPin: (userId: string, newPin: string) => Promise<boolean>;
+  /**
+   * Alta/edición/borrado de un empleado, o cambio de su PIN: requieren
+   * `authProof` (el PIN de un Dueño/Superadmin del mismo comercio) porque la
+   * base ya no acepta estas escrituras sin esa confirmación verificada del
+   * lado del servidor — ver manage-employee.
+   */
+  addUser: (userData: Omit<User, 'id' | 'initials'>, authProof: EmployeeAuthProof) => Promise<boolean>;
+  updateUser: (
+    id: string,
+    userData: {
+      name?: string;
+      email?: string;
+      role?: UserRole;
+      roleTitle?: string;
+      canDiscount?: boolean;
+      canRefund?: boolean;
+      canManageInventory?: boolean;
+      avatarUrl?: string;
+    },
+    authProof: EmployeeAuthProof
+  ) => Promise<boolean>;
+  deleteUser: (id: string, authProof: EmployeeAuthProof) => Promise<boolean>;
+  updateUserPin: (userId: string, newPin: string, authProof: EmployeeAuthProof) => Promise<boolean>;
   requestPinRecovery: (email: string) => { success: boolean; user?: User; message: string };
   /** Restablece el PIN autorizando con la contraseña maestra (no con un código por email). */
   resetPinWithMasterPassword: (
@@ -488,9 +509,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               ? envPin
               : String(globalThis.crypto.getRandomValues(new Uint32Array(1))[0] % 10000).padStart(4, '0');
 
-          const defaultUser = await userService.create({
+          // manage-employee hashea el PIN del lado del servidor: acá se manda
+          // en claro (nunca un hash ya calculado, que quedaría hasheado dos
+          // veces y rompería el primer login).
+          const defaultUser = await userService.seedInitialOwner({
             ...SEED_USERS[0],
-            pin: await hashSecret(seedPin),
+            pin: seedPin,
           });
           setUsers([defaultUser]);
 
@@ -935,25 +959,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   /**
    * Verifica el PIN de un usuario contra el hash almacenado.
    *
-   * Migración transparente: si la fila todavía guarda el PIN en texto plano
-   * (instalaciones anteriores a esta versión), lo compara una única vez y
-   * lo reemplaza por su hash en la base. Nadie tiene que reingresar su PIN.
+   * Si la fila todavía guarda el PIN en texto plano (instalaciones muy
+   * viejas, previas al hasheo), el login igual funciona comparando en claro.
+   * Antes esto además re-guardaba el PIN ya hasheado en el mismo momento,
+   * pero esa escritura automática ya no es posible sin el PIN de un Dueño
+   * (ver manage-employee) — y tampoco hace falta pedírselo acá: alcanza con
+   * que un Dueño le asigne un PIN nuevo desde Empleados una vez, que ya
+   * queda hasheado por el nuevo circuito protegido.
    */
   const verifyUserPin = async (targetUser: User, pin: string): Promise<boolean> => {
     if (isHashed(targetUser.pin)) {
       return verifySecret(pin, targetUser.pin);
     }
-
-    if (targetUser.pin !== pin) return false;
-
-    try {
-      const hashed = await hashSecret(pin);
-      await userService.updatePin(targetUser.id, hashed);
-      setUsers((prev) => prev.map((u) => (u.id === targetUser.id ? { ...u, pin: hashed } : u)));
-    } catch (e) {
-      console.error('No se pudo migrar el PIN a formato hash:', e);
-    }
-    return true;
+    return targetUser.pin === pin;
   };
 
   const login = async (userId: string, pin: string): Promise<boolean> => {
@@ -1087,7 +1105,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   /**
    * Paso 2: aplica el PIN nuevo, autorizado con la contraseña maestra.
-   * El PIN se guarda siempre hasheado.
+   * El chequeo de acá es sólo para dar feedback rápido sin ida y vuelta al
+   * servidor — el que de verdad decide es manage-employee, que vuelve a
+   * verificar la misma contraseña contra su propio secreto del lado del
+   * servidor antes de escribir nada. El PIN se guarda siempre hasheado (lo
+   * hashea la función, no el cliente).
    */
   const resetPinWithMasterPassword = async (
     email: string,
@@ -1124,28 +1146,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
     }
 
-    let hashedPin: string;
-    try {
-      hashedPin = await hashSecret(cleanPin);
-    } catch (e) {
-      console.error('Error hasheando el PIN:', e);
-      return { success: false, message: 'No se pudo procesar el PIN de forma segura.' };
-    }
+    const res = await userService.update(
+      targetUser.id,
+      { newPin: cleanPin },
+      { masterPassword: masterPassword.trim() }
+    );
 
-    try {
-      await userService.updatePin(targetUser.id, hashedPin);
-    } catch (e) {
-      console.error('Error updating pin in Supabase:', e);
+    if (!res.success || !res.user) {
       return {
         success: false,
-        message: 'No se pudo guardar el nuevo PIN en el servidor. Intentá de nuevo.',
+        message: res.message || 'No se pudo guardar el nuevo PIN en el servidor. Intentá de nuevo.',
       };
     }
 
-    setUsers((prev) => prev.map((u) => (u.id === targetUser.id ? { ...u, pin: hashedPin } : u)));
+    setUsers((prev) => prev.map((u) => (u.id === targetUser.id ? (res.user as User) : u)));
 
     if (currentUser?.id === targetUser.id) {
-      setCurrentUser((prev) => (prev ? { ...prev, pin: hashedPin } : null));
+      setCurrentUser(res.user);
     }
 
     showToast(`PIN restablecido con éxito para ${targetUser.name}.`, 'success');
@@ -1155,124 +1172,87 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   };
 
-  const updateUserPin = async (userId: string, newPin: string): Promise<boolean> => {
+  const updateUserPin = async (
+    userId: string,
+    newPin: string,
+    authProof: EmployeeAuthProof
+  ): Promise<boolean> => {
     if (blockIfImpersonating()) return false;
     if (newPin.length !== 4 || !/^\d{4}$/.test(newPin)) {
       showToast('El PIN debe tener 4 dígitos numéricos', 'error');
       return false;
     }
 
-    let hashedPin: string;
-    try {
-      hashedPin = await hashSecret(newPin);
-    } catch (e) {
-      console.error('Error hasheando el PIN:', e);
-      showToast('No se pudo procesar el PIN de forma segura', 'error');
+    const res = await userService.update(userId, { newPin }, authProof);
+    if (!res.success || !res.user) {
+      showToast(res.message || 'Error al actualizar PIN en el servidor', 'error');
       return false;
     }
 
-    try {
-      await userService.updatePin(userId, hashedPin);
-    } catch (e) {
-      console.error('Error updating PIN in Supabase:', e);
-      showToast('Error al actualizar PIN en el servidor', 'error');
-      return false;
-    }
-
-    setUsers((prev) =>
-      prev.map((u) => (u.id === userId ? { ...u, pin: hashedPin } : u))
-    );
+    setUsers((prev) => prev.map((u) => (u.id === userId ? (res.user as User) : u)));
 
     if (currentUser?.id === userId) {
-      setCurrentUser((prev) => (prev ? { ...prev, pin: hashedPin } : null));
+      setCurrentUser(res.user);
     }
 
     showToast('PIN de seguridad actualizado correctamente', 'success');
     return true;
   };
 
-  const addUser = async (userData: Omit<User, 'id' | 'initials'>) => {
-    if (blockIfImpersonating()) return;
-    const initials = userData.name
-      .split(' ')
-      .map((n) => n[0])
-      .join('')
-      .toUpperCase()
-      .substring(0, 2);
-
+  const addUser = async (
+    userData: Omit<User, 'id' | 'initials'>,
+    authProof: EmployeeAuthProof
+  ): Promise<boolean> => {
+    if (blockIfImpersonating()) return false;
     if (!/^\d{4}$/.test(userData.pin || '')) {
       showToast('El PIN debe tener 4 dígitos numéricos', 'error');
-      return;
+      return false;
     }
 
-    let hashedPin: string;
-    try {
-      hashedPin = await hashSecret(userData.pin);
-    } catch (e) {
-      console.error('Error hasheando el PIN:', e);
-      showToast('No se pudo procesar el PIN de forma segura', 'error');
-      return;
+    const res = await userService.create(userData, authProof);
+    if (!res.success || !res.user) {
+      showToast(res.message || 'No se pudo registrar el empleado', 'error');
+      return false;
     }
 
-    const newUser: User = {
-      ...userData,
-      pin: hashedPin,
-      id: `usr-${Date.now()}`,
-      initials: initials || 'U',
-      avatarUrl: userData.avatarUrl || '',
-    };
-
-    try {
-      const created = await userService.create(newUser);
-      setUsers((prev) => [...prev, created]);
-      showToast(`Empleado ${created.name} registrado con éxito`, 'success');
-    } catch (e) {
-      console.error('Error inserting user to Supabase:', e);
-      setUsers((prev) => [...prev, newUser]);
-      showToast(`Empleado registrado localmente`, 'warning');
-    }
+    setUsers((prev) => [...prev, res.user as User]);
+    showToast(`Empleado ${res.user.name} registrado con éxito`, 'success');
+    return true;
   };
 
-  const updateUser = async (id: string, userData: Partial<User>) => {
-    if (blockIfImpersonating()) return;
-    // El PIN nunca se actualiza por esta vía: usá updateUserPin, que lo hashea.
-    const { pin, ...safeUserData } = userData;
-    if (pin !== undefined && !isHashed(pin)) {
-      console.warn('updateUser recibió un PIN en texto plano: se ignoró. Usá updateUserPin.');
+  const updateUser = async (
+    id: string,
+    userData: {
+      name?: string;
+      email?: string;
+      role?: UserRole;
+      roleTitle?: string;
+      canDiscount?: boolean;
+      canRefund?: boolean;
+      canManageInventory?: boolean;
+      avatarUrl?: string;
+    },
+    authProof: EmployeeAuthProof
+  ): Promise<boolean> => {
+    if (blockIfImpersonating()) return false;
+
+    const res = await userService.update(id, userData, authProof);
+    if (!res.success || !res.user) {
+      showToast(res.message || 'No se pudo actualizar el empleado', 'error');
+      return false;
     }
 
-    try {
-      await userService.update(id, safeUserData);
-    } catch (e) {
-      console.error('Error updating user in Supabase:', e);
-    }
-
-    setUsers((prev) =>
-      prev.map((u) => {
-        if (u.id === id) {
-          const updated = { ...u, ...userData };
-          if (userData.name) {
-            updated.initials = userData.name
-              .split(' ')
-              .map((n) => n[0])
-              .join('')
-              .toUpperCase()
-              .substring(0, 2);
-          }
-          return updated;
-        }
-        return u;
-      })
-    );
+    setUsers((prev) => prev.map((u) => (u.id === id ? (res.user as User) : u)));
 
     if (currentUser?.id === id) {
-      setCurrentUser((prev) => (prev ? { ...prev, ...userData } : null));
+      setCurrentUser(res.user);
     }
 
     showToast('Datos de usuario actualizados correctamente', 'success');
+    return true;
   };
 
-  const deleteUser = async (id: string): Promise<boolean> => {
+  const deleteUser = async (id: string, authProof: EmployeeAuthProof): Promise<boolean> => {
     if (blockIfImpersonating()) return false;
     if (!currentUser || currentUser.role !== 'DUEÑO') {
       showToast('Solo el dueño puede eliminar cuentas de usuario', 'error');
@@ -1287,10 +1267,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const targetUser = users.find((u) => u.id === id);
     if (!targetUser) return false;
 
-    try {
-      await userService.delete(id);
-    } catch (e) {
-      console.error('Error deleting user in Supabase:', e);
+    const res = await userService.remove(id, authProof);
+    if (!res.success) {
+      showToast(res.message || 'No se pudo eliminar el empleado', 'error');
+      return false;
     }
 
     setUsers((prev) => prev.filter((u) => u.id !== id));

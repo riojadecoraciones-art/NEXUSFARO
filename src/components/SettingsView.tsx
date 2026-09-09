@@ -77,6 +77,8 @@ export const SettingsView: React.FC = () => {
   const [newUserRole, setNewUserRole] = useState<UserRole>('CAJERO');
   const [newUserDiscount, setNewUserDiscount] = useState<boolean>(false);
   const [newUserRefund, setNewUserRefund] = useState<boolean>(false);
+  const [newUserOwnerPin, setNewUserOwnerPin] = useState<string>('');
+  const [isCreatingUser, setIsCreatingUser] = useState<boolean>(false);
 
   const handleSaveStore = (e: React.FormEvent) => {
     e.preventDefault();
@@ -99,29 +101,40 @@ export const SettingsView: React.FC = () => {
     showToast('Configuración del comercio y sucursal guardadas con éxito', 'success');
   };
 
-  const handleCreateUser = (e: React.FormEvent) => {
+  const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newUserName || newUserPin.length !== 4) {
       showToast('Ingresa un nombre y PIN de 4 dígitos', 'error');
       return;
     }
+    if (newUserOwnerPin.length !== 4) {
+      showToast('Ingresá tu PIN de Dueño para confirmar el alta', 'error');
+      return;
+    }
 
-    addUser({
-      name: newUserName,
-      email: newUserEmail || undefined,
-      role: newUserRole,
-      roleTitle: newUserRole === 'DUEÑO' ? 'Dueño / Administrador' : 'Cajero',
-      pin: newUserPin,
-      avatarUrl: '',
-      canDiscount: newUserRole === 'DUEÑO' ? true : newUserDiscount,
-      canRefund: newUserRole === 'DUEÑO' ? true : newUserRefund,
-      canManageInventory: newUserRole === 'DUEÑO',
-    });
+    setIsCreatingUser(true);
+    const ok = await addUser(
+      {
+        name: newUserName,
+        email: newUserEmail || undefined,
+        role: newUserRole,
+        roleTitle: newUserRole === 'DUEÑO' ? 'Dueño / Administrador' : 'Cajero',
+        pin: newUserPin,
+        avatarUrl: '',
+        canDiscount: newUserRole === 'DUEÑO' ? true : newUserDiscount,
+        canRefund: newUserRole === 'DUEÑO' ? true : newUserRefund,
+        canManageInventory: newUserRole === 'DUEÑO',
+      },
+      { ownerPin: newUserOwnerPin }
+    );
+    setIsCreatingUser(false);
+    if (!ok) return;
 
     setIsAddUserOpen(false);
     setNewUserName('');
     setNewUserEmail('');
     setNewUserPin('');
+    setNewUserOwnerPin('');
   };
 
   const handleResetData = () => {
@@ -517,7 +530,7 @@ export const SettingsView: React.FC = () => {
               {newUserRole === 'CAJERO' && (
                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
                   <div className="font-bold text-slate-700 text-[11px] uppercase">Permisos de Cajero</div>
-                  
+
                   <label className="flex items-center gap-2 cursor-pointer">
                     <input
                       type="checkbox"
@@ -540,6 +553,21 @@ export const SettingsView: React.FC = () => {
                 </div>
               )}
 
+              <div className="pt-2 border-t border-slate-100">
+                <label className="font-bold text-slate-700 block mb-1">
+                  Tu PIN de Dueño (para confirmar el alta)
+                </label>
+                <input
+                  type="password"
+                  maxLength={4}
+                  required
+                  value={newUserOwnerPin}
+                  onChange={(e) => setNewUserOwnerPin(e.target.value.replace(/\D/g, ''))}
+                  placeholder="••••"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl font-mono text-center font-bold tracking-widest text-base focus:outline-none"
+                />
+              </div>
+
               <div className="pt-2 flex justify-end gap-2">
                 <button
                   type="button"
@@ -550,9 +578,10 @@ export const SettingsView: React.FC = () => {
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-slate-950 text-white font-bold rounded-xl shadow-xs"
+                  disabled={isCreatingUser}
+                  className="px-5 py-2 bg-slate-950 text-white font-bold rounded-xl shadow-xs disabled:opacity-50"
                 >
-                  Crear Usuario
+                  {isCreatingUser ? 'Creando…' : 'Crear Usuario'}
                 </button>
               </div>
             </form>

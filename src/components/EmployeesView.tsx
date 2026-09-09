@@ -2,22 +2,18 @@ import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import {
   Users,
-  UserCheck,
   Shield,
   Key,
   Plus,
   Lock,
-  CheckCircle2,
   X,
   Edit2,
   Trash2,
   Percent,
   RotateCcw,
-  Check,
   LogIn,
   Mail,
   KeyRound,
-  ShieldAlert,
   ShieldCheck,
 } from 'lucide-react';
 import { User, UserRole } from '../types';
@@ -41,6 +37,10 @@ export const EmployeesView: React.FC = () => {
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [pinChangeUser, setPinChangeUser] = useState<User | null>(null);
   const [quickNewPin, setQuickNewPin] = useState<string>('');
+  const [quickOwnerPin, setQuickOwnerPin] = useState<string>('');
+  const [deletingUser, setDeletingUser] = useState<User | null>(null);
+  const [deleteOwnerPin, setDeleteOwnerPin] = useState<string>('');
+  const [isSaving, setIsSaving] = useState<boolean>(false);
 
   // Form states
   const [name, setName] = useState<string>('');
@@ -51,6 +51,7 @@ export const EmployeesView: React.FC = () => {
   const [canDiscount, setCanDiscount] = useState<boolean>(false);
   const [canRefund, setCanRefund] = useState<boolean>(false);
   const [canManageInventory, setCanManageInventory] = useState<boolean>(false);
+  const [ownerPin, setOwnerPin] = useState<string>('');
 
   const handleOpenAdd = () => {
     setEditingUser(null);
@@ -62,6 +63,7 @@ export const EmployeesView: React.FC = () => {
     setCanDiscount(false);
     setCanRefund(false);
     setCanManageInventory(false);
+    setOwnerPin('');
     setIsAddModalOpen(true);
   };
 
@@ -71,64 +73,106 @@ export const EmployeesView: React.FC = () => {
     setEmail(user.email || '');
     setRole(user.role);
     setRoleTitle(user.roleTitle);
-    setPin(user.pin);
     setCanDiscount(!!user.canDiscount);
     setCanRefund(!!user.canRefund);
     setCanManageInventory(!!user.canManageInventory);
+    setOwnerPin('');
     setIsAddModalOpen(true);
   };
 
   const handleOpenQuickPinChange = (user: User) => {
     setPinChangeUser(user);
     setQuickNewPin('');
+    setQuickOwnerPin('');
   };
 
-  const handleSaveQuickPin = (e: React.FormEvent) => {
+  const handleSaveQuickPin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!pinChangeUser) return;
     if (quickNewPin.length !== 4 || !/^\d{4}$/.test(quickNewPin)) {
       showToast('El PIN debe tener 4 dígitos numéricos', 'error');
       return;
     }
-
-    updateUserPin(pinChangeUser.id, quickNewPin);
-    setPinChangeUser(null);
-    setQuickNewPin('');
-  };
-
-  const handleSave = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!name.trim() || pin.length !== 4 || !/^\d{4}$/.test(pin)) {
-      showToast('Ingresa un nombre válido y un PIN numérico de 4 dígitos', 'error');
+    if (quickOwnerPin.length !== 4 || !/^\d{4}$/.test(quickOwnerPin)) {
+      showToast('Ingresá tu PIN de Dueño para confirmar el cambio', 'error');
       return;
     }
 
-    if (editingUser) {
-      updateUser(editingUser.id, {
-        name,
-        email: email.trim() || undefined,
-        role,
-        roleTitle,
-        pin,
-        canDiscount,
-        canRefund,
-        canManageInventory: role === 'DUEÑO' ? true : canManageInventory,
-      });
-    } else {
-      addUser({
-        name,
-        email: email.trim() || undefined,
-        role,
-        roleTitle,
-        pin,
-        avatarUrl: '',
-        canDiscount,
-        canRefund,
-        canManageInventory: role === 'DUEÑO' ? true : canManageInventory,
-      });
+    setIsSaving(true);
+    const ok = await updateUserPin(pinChangeUser.id, quickNewPin, { ownerPin: quickOwnerPin });
+    setIsSaving(false);
+    if (!ok) return;
+
+    setPinChangeUser(null);
+    setQuickNewPin('');
+    setQuickOwnerPin('');
+  };
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim()) {
+      showToast('Ingresá un nombre válido', 'error');
+      return;
+    }
+    if (!editingUser && (pin.length !== 4 || !/^\d{4}$/.test(pin))) {
+      showToast('Ingresá un PIN numérico de 4 dígitos para el nuevo empleado', 'error');
+      return;
+    }
+    if (ownerPin.length !== 4 || !/^\d{4}$/.test(ownerPin)) {
+      showToast('Ingresá tu PIN de Dueño para confirmar el cambio', 'error');
+      return;
     }
 
+    setIsSaving(true);
+    const ok = editingUser
+      ? await updateUser(
+          editingUser.id,
+          {
+            name,
+            email: email.trim() || undefined,
+            role,
+            roleTitle,
+            canDiscount,
+            canRefund,
+            canManageInventory: role === 'DUEÑO' ? true : canManageInventory,
+          },
+          { ownerPin }
+        )
+      : await addUser(
+          {
+            name,
+            email: email.trim() || undefined,
+            role,
+            roleTitle,
+            pin,
+            avatarUrl: '',
+            canDiscount,
+            canRefund,
+            canManageInventory: role === 'DUEÑO' ? true : canManageInventory,
+          },
+          { ownerPin }
+        );
+    setIsSaving(false);
+    if (!ok) return;
+
     setIsAddModalOpen(false);
+  };
+
+  const handleConfirmDelete = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!deletingUser) return;
+    if (deleteOwnerPin.length !== 4 || !/^\d{4}$/.test(deleteOwnerPin)) {
+      showToast('Ingresá tu PIN de Dueño para confirmar', 'error');
+      return;
+    }
+
+    setIsSaving(true);
+    const ok = await deleteUser(deletingUser.id, { ownerPin: deleteOwnerPin });
+    setIsSaving(false);
+    if (!ok) return;
+
+    setDeletingUser(null);
+    setDeleteOwnerPin('');
   };
 
   return (
@@ -169,7 +213,8 @@ export const EmployeesView: React.FC = () => {
               </span>
             </div>
             <p className="text-xs text-blue-100/80 mt-0.5">
-              Los PINs están ocultos en la pantalla de inicio. Solo tú como Dueño puedes revelarlos o restablecerlos.
+              Los PINs están ocultos en la pantalla de inicio. Cualquier alta, edición o borrado de un
+              empleado pide confirmar con el PIN de un Dueño, verificado por el servidor.
             </p>
           </div>
         </div>
@@ -331,7 +376,10 @@ export const EmployeesView: React.FC = () => {
 
                   {isOwner && !isCurrentUser && (
                     <button
-                      onClick={() => deleteUser(user.id)}
+                      onClick={() => {
+                        setDeletingUser(user);
+                        setDeleteOwnerPin('');
+                      }}
                       className="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 font-bold rounded-lg transition-colors"
                       title="Eliminar empleado"
                     >
@@ -384,6 +432,21 @@ export const EmployeesView: React.FC = () => {
                 />
               </div>
 
+              <div className="pt-3 border-t border-slate-100">
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  Tu PIN de Dueño (para confirmar)
+                </label>
+                <input
+                  type="password"
+                  maxLength={4}
+                  required
+                  value={quickOwnerPin}
+                  onChange={(e) => setQuickOwnerPin(e.target.value.replace(/\D/g, ''))}
+                  placeholder="••••"
+                  className="w-full px-3.5 py-3 font-mono text-center tracking-widest bg-slate-50 border border-slate-300 rounded-xl text-xl font-black text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-600"
+                />
+              </div>
+
               <div className="flex gap-2 pt-2">
                 <button
                   type="button"
@@ -394,9 +457,74 @@ export const EmployeesView: React.FC = () => {
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-extrabold rounded-xl shadow-md transition-all"
+                  disabled={isSaving}
+                  className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-extrabold rounded-xl shadow-md transition-all disabled:opacity-50"
                 >
-                  Guardar PIN
+                  {isSaving ? 'Guardando…' : 'Guardar PIN'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Delete confirmation */}
+      {deletingUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-3xl p-6 sm:p-7 w-full max-w-sm shadow-2xl border border-slate-200 animate-in zoom-in-95">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-rose-100 text-rose-700 flex items-center justify-center font-bold">
+                  <Trash2 className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-black text-slate-900 text-sm">Eliminar Empleado</h3>
+                  <p className="text-xs text-slate-500">{deletingUser.name}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setDeletingUser(null)}
+                className="text-slate-400 hover:text-slate-600 p-1"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleConfirmDelete} className="space-y-4">
+              <p className="text-xs text-slate-600">
+                Esta acción no se puede deshacer. {deletingUser.name} ya no va a poder ingresar al
+                sistema.
+              </p>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  Tu PIN de Dueño (para confirmar)
+                </label>
+                <input
+                  type="password"
+                  maxLength={4}
+                  required
+                  autoFocus
+                  value={deleteOwnerPin}
+                  onChange={(e) => setDeleteOwnerPin(e.target.value.replace(/\D/g, ''))}
+                  placeholder="••••"
+                  className="w-full px-3.5 py-3 font-mono text-center tracking-widest bg-slate-50 border border-slate-300 rounded-xl text-xl font-black text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-rose-500"
+                />
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setDeletingUser(null)}
+                  className="flex-1 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors border border-slate-200"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSaving}
+                  className="flex-1 py-2.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-extrabold rounded-xl shadow-md transition-all disabled:opacity-50"
+                >
+                  {isSaving ? 'Eliminando…' : 'Eliminar'}
                 </button>
               </div>
             </form>
@@ -407,7 +535,7 @@ export const EmployeesView: React.FC = () => {
       {/* Modal: Add/Edit User */}
       {isAddModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-3xl p-6 sm:p-8 w-full max-w-md shadow-2xl border border-slate-200 animate-in zoom-in-95">
+          <div className="bg-white rounded-3xl p-6 sm:p-8 w-full max-w-md shadow-2xl border border-slate-200 animate-in zoom-in-95 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-4 border-b border-slate-100 mb-5">
               <div>
                 <span className="text-xs font-bold text-slate-400 uppercase">Personal</span>
@@ -449,7 +577,7 @@ export const EmployeesView: React.FC = () => {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className={editingUser ? '' : 'grid grid-cols-2 gap-3'}>
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">Rol</label>
                   <select
@@ -462,19 +590,26 @@ export const EmployeesView: React.FC = () => {
                   </select>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">PIN (4 dígitos)</label>
-                  <input
-                    type="text"
-                    maxLength={4}
-                    required
-                    value={pin}
-                    onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))}
-                    placeholder="1234"
-                    className="w-full px-3.5 py-2.5 font-mono text-center tracking-widest bg-slate-50 border border-slate-200 rounded-xl text-sm font-black focus:bg-white focus:outline-none focus:ring-2 focus:ring-slate-900/10"
-                  />
-                </div>
+                {!editingUser && (
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">PIN (4 dígitos)</label>
+                    <input
+                      type="text"
+                      maxLength={4}
+                      required
+                      value={pin}
+                      onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))}
+                      placeholder="1234"
+                      className="w-full px-3.5 py-2.5 font-mono text-center tracking-widest bg-slate-50 border border-slate-200 rounded-xl text-sm font-black focus:bg-white focus:outline-none focus:ring-2 focus:ring-slate-900/10"
+                    />
+                  </div>
+                )}
               </div>
+              {editingUser && (
+                <p className="text-[11px] text-slate-400 -mt-2">
+                  Para cambiar el PIN de este empleado, usá "Cambiar PIN" desde su tarjeta.
+                </p>
+              )}
 
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">Título del Cargo</label>
@@ -523,6 +658,21 @@ export const EmployeesView: React.FC = () => {
                 </div>
               )}
 
+              <div className="pt-3 border-t border-slate-100">
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Tu PIN de Dueño (para confirmar este cambio)
+                </label>
+                <input
+                  type="password"
+                  maxLength={4}
+                  required
+                  value={ownerPin}
+                  onChange={(e) => setOwnerPin(e.target.value.replace(/\D/g, ''))}
+                  placeholder="••••"
+                  className="w-full px-3.5 py-2.5 font-mono text-center tracking-widest bg-slate-50 border border-slate-200 rounded-xl text-sm font-black focus:bg-white focus:outline-none focus:ring-2 focus:ring-slate-900/10"
+                />
+              </div>
+
               <div className="flex justify-end gap-2.5 pt-4 border-t border-slate-100">
                 <button
                   type="button"
@@ -533,9 +683,10 @@ export const EmployeesView: React.FC = () => {
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2.5 bg-slate-950 hover:bg-slate-900 text-white text-xs font-extrabold rounded-xl shadow-md transition-all"
+                  disabled={isSaving}
+                  className="px-5 py-2.5 bg-slate-950 hover:bg-slate-900 text-white text-xs font-extrabold rounded-xl shadow-md transition-all disabled:opacity-50"
                 >
-                  Guardar Empleado
+                  {isSaving ? 'Guardando…' : 'Guardar Empleado'}
                 </button>
               </div>
             </form>

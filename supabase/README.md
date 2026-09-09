@@ -209,6 +209,48 @@ No incluye la lista de empleados/PIN del comercio auditado (dato sensible,
 fuera de lo pedido); la sección "Empleados" se oculta del menú mientras se
 audita.
 
+## Alta, edición y borrado de empleados
+
+Antes, la app escribía directo en `users` (alta, edición de rol/permisos,
+borrado, cambio de PIN) protegida sólo por la policy de RLS acotada a
+`store_id` — es decir, cualquier terminal autenticada podía hacer ese mismo
+pedido "a mano" desde la consola del navegador (F12) y asignarse a sí misma
+el rol DUEÑO, o los permisos de descuento/reembolso/inventario, sin que la
+base lo impidiera. La policy nunca preguntaba "¿quién sos y qué se supone
+que podés cambiar?", sólo "¿es tu comercio?".
+
+Ahora `public.users` no acepta INSERT/UPDATE/DELETE directo del rol
+`authenticated` (ver migración `revocar_escritura_directa_en_users`). Toda
+escritura pasa por la Edge Function `manage-employee`, que corre con
+`service_role` recién después de confirmar del lado del servidor que quien
+pide el cambio está autorizado:
+
+- el PIN de un usuario DUEÑO o SUPERADMIN **del mismo comercio** (verificado
+  contra el hash guardado, igual que el login normal), o
+- la contraseña maestra del sistema — sólo para "olvidé mi PIN"
+  (`ForgotPinModal`), o
+- ninguna de las dos, **únicamente** si el comercio todavía no tiene ni un
+  sólo usuario: el alta del primer Dueño de un comercio recién creado, que
+  por definición no puede confirmar nada con un PIN que todavía no existe.
+  Se cierra solo apenas se crea esa primera fila.
+
+Los cajeros siguen entrando con su PIN de 4 dígitos exactamente como antes
+— este cambio no les agrega ningún paso. Lo único nuevo es que **dar de
+alta, editar o borrar un empleado (o cambiarle el PIN) pide confirmar con
+el PIN de un Dueño**, verificado en el servidor en vez de sólo confiar en
+qué botón mostraba la pantalla.
+
+Para que el flujo de "olvidé mi PIN" (contraseña maestra) siga funcionando,
+hace falta cargar el mismo secreto en Supabase:
+
+| Nombre | Valor |
+| --- | --- |
+| `MASTER_PASSWORD_HASH` | el mismo hash de `VITE_MASTER_PASSWORD_HASH` (la versión **sin** escapar, la que imprime `npm run hash-password` para el panel de un hosting) |
+
+Sin este secreto, ese flujo puntual responde "no está configurado en el
+servidor" — el resto (alta/edición/borrado con PIN de Dueño) funciona
+igual, no depende de este secreto.
+
 ## Cobro a comercios clientes (manual)
 
 El cobro en sí queda **fuera del sistema**: se manda el link de pago de

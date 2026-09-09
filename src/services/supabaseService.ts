@@ -13,6 +13,8 @@ import {
   StoreInfo,
   StoreTenant,
   StoreOperationalSnapshot,
+  EmployeeAuthProof,
+  UserRole,
 } from '../types';
 
 // ==========================================
@@ -222,98 +224,97 @@ export const userService = {
     }));
   },
 
-  async create(user: Omit<User, 'id' | 'initials'> & { id?: string; initials?: string }): Promise<User> {
-    const initials =
-      user.initials ||
-      user.name
-        .split(' ')
-        .map((n) => n[0])
-        .join('')
-        .toUpperCase()
-        .substring(0, 2) ||
-      'US';
+  /**
+   * Alta del primer usuario (Dueño) de un comercio recién creado, cuando
+   * todavía no existe nadie que pueda confirmar el alta con su PIN — se usa
+   * sólo una vez, al primer arranque con la tabla vacía (ver AppContext).
+   * La Edge Function sólo permite esto si el comercio no tiene ningún
+   * usuario todavía; para cualquier alta posterior hace falta create(), con
+   * el PIN de un Dueño real.
+   */
+  async seedInitialOwner(user: Omit<User, 'id' | 'initials'>): Promise<User> {
+    const { data, error } = await supabase.functions.invoke('manage-employee', {
+      body: { action: 'create', user },
+    });
 
-    const newId = user.id || `usr-${Date.now()}`;
-
-    const { data, error } = await supabase
-      .from('users')
-      .insert({
-        id: newId,
-        name: user.name,
-        email: user.email || null,
-        role: user.role,
-        role_title: user.roleTitle,
-        pin: user.pin,
-        avatar_url: user.avatarUrl || '',
-        initials: initials,
-        can_discount: user.canDiscount ?? false,
-        can_refund: user.canRefund ?? false,
-        can_manage_inventory: user.canManageInventory ?? false,
-      })
-      .select()
-      .single();
-
-    if (error) {
-      console.error('Error creating user:', error);
-      throw error;
+    if (error || !data?.success) {
+      console.error('Error creando el usuario Dueño inicial:', error || data);
+      throw new Error(data?.error || 'No se pudo crear el usuario inicial');
     }
 
-    return {
-      id: data.id,
-      name: data.name,
-      email: data.email || undefined,
-      role: data.role,
-      roleTitle: data.role_title,
-      pin: data.pin,
-      avatarUrl: data.avatar_url || '',
-      initials: data.initials || '',
-      canDiscount: Boolean(data.can_discount),
-      canRefund: Boolean(data.can_refund),
-      canManageInventory: Boolean(data.can_manage_inventory),
-    };
+    return data.user as User;
   },
 
-  async update(id: string, updates: Partial<User>): Promise<void> {
-    const dbUpdates: Record<string, any> = {
-      updated_at: new Date().toISOString(),
-    };
+  /**
+   * Estas cuatro escrituras (alta, edición, borrado, PIN) ya no tocan la
+   * tabla directo: la Edge Function manage-employee corre con service_role
+   * recién después de verificar del lado del servidor el PIN de un
+   * Dueño/Superadmin del mismo comercio (o la contraseña maestra). Antes
+   * bastaba con estar en la misma sesión de terminal — cualquier cajero
+   * podía escribir su propio rol o permisos desde la consola del navegador,
+   * porque la policy de RLS sólo comprobaba el comercio, nunca quién pedía
+   * el cambio. Ver migración revocar_escritura_directa_en_users.
+   */
+  async create(
+    user: Omit<User, 'id' | 'initials'>,
+    authProof: EmployeeAuthProof
+  ): Promise<{ success: boolean; user?: User; message?: string }> {
+    const { data, error } = await supabase.functions.invoke('manage-employee', {
+      body: { action: 'create', user, ...authProof },
+    });
 
-    if (updates.name !== undefined) dbUpdates.name = updates.name;
-    if (updates.email !== undefined) dbUpdates.email = updates.email || null;
-    if (updates.role !== undefined) dbUpdates.role = updates.role;
-    if (updates.roleTitle !== undefined) dbUpdates.role_title = updates.roleTitle;
-    if (updates.pin !== undefined) dbUpdates.pin = updates.pin;
-    if (updates.avatarUrl !== undefined) dbUpdates.avatar_url = updates.avatarUrl;
-    if (updates.initials !== undefined) dbUpdates.initials = updates.initials;
-    if (updates.canDiscount !== undefined) dbUpdates.can_discount = updates.canDiscount;
-    if (updates.canRefund !== undefined) dbUpdates.can_refund = updates.canRefund;
-    if (updates.canManageInventory !== undefined) dbUpdates.can_manage_inventory = updates.canManageInventory;
-
-    const { error } = await supabase.from('users').update(dbUpdates).eq('id', id);
     if (error) {
-      console.error('Error updating user:', error);
-      throw error;
+      console.error('Error invocando manage-employee (create):', error);
+      return { success: false, message: 'No se pudo crear el empleado. Probá de nuevo.' };
     }
+    if (!data?.success) {
+      return { success: false, message: data?.error || 'No se pudo crear el empleado.' };
+    }
+    return { success: true, user: data.user as User };
   },
 
-  async delete(id: string): Promise<void> {
-    const { error } = await supabase.from('users').delete().eq('id', id);
+  async update(
+    id: string,
+    updates: {
+      name?: string;
+      email?: string;
+      role?: UserRole;
+      roleTitle?: string;
+      canDiscount?: boolean;
+      canRefund?: boolean;
+      canManageInventory?: boolean;
+      avatarUrl?: string;
+      newPin?: string;
+    },
+    authProof: EmployeeAuthProof
+  ): Promise<{ success: boolean; user?: User; message?: string }> {
+    const { data, error } = await supabase.functions.invoke('manage-employee', {
+      body: { action: 'update', targetId: id, updates, ...authProof },
+    });
+
     if (error) {
-      console.error('Error deleting user:', error);
-      throw error;
+      console.error('Error invocando manage-employee (update):', error);
+      return { success: false, message: 'No se pudo actualizar el empleado. Probá de nuevo.' };
     }
+    if (!data?.success) {
+      return { success: false, message: data?.error || 'No se pudo actualizar el empleado.' };
+    }
+    return { success: true, user: data.user as User };
   },
 
-  async updatePin(id: string, newPin: string): Promise<void> {
-    const { error } = await supabase
-      .from('users')
-      .update({ pin: newPin, updated_at: new Date().toISOString() })
-      .eq('id', id);
+  async remove(id: string, authProof: EmployeeAuthProof): Promise<{ success: boolean; message?: string }> {
+    const { data, error } = await supabase.functions.invoke('manage-employee', {
+      body: { action: 'delete', targetId: id, ...authProof },
+    });
 
     if (error) {
-      console.error('Error updating PIN:', error);
-      throw error;
+      console.error('Error invocando manage-employee (delete):', error);
+      return { success: false, message: 'No se pudo eliminar el empleado. Probá de nuevo.' };
     }
+    if (!data?.success) {
+      return { success: false, message: data?.error || 'No se pudo eliminar el empleado.' };
+    }
+    return { success: true };
   },
 };
 
