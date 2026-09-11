@@ -39,8 +39,28 @@ export const LoginScreen: React.FC = () => {
     isMasterAccessConfigured,
   } = useApp();
 
-  // Login Mode: 'PIN' (Employees / Store Owner) vs 'MASTER' (System Owner / Superadmin)
-  const [loginMode, setLoginMode] = useState<'PIN' | 'MASTER'>('PIN');
+  // Login Mode: 'PIN' (Employees / Store Owner) vs 'MASTER' (System Owner / Superadmin).
+  // Arranca en 'PIN' para cualquier terminal nueva (lo normal: la mayoría de
+  // quienes usan una caja son cajeros/dueños, no el operador de la
+  // plataforma) pero recuerda la última pestaña elegida en ESTE navegador —
+  // así una terminal que se usa sobre todo para entrar con Llave Maestra no
+  // vuelve a "Personal & PIN" en cada recarga.
+  const [loginMode, setLoginModeRaw] = useState<'PIN' | 'MASTER'>(() => {
+    try {
+      return localStorage.getItem('nexusfaro_login_tab') === 'MASTER' ? 'MASTER' : 'PIN';
+    } catch {
+      return 'PIN';
+    }
+  });
+
+  const selectLoginMode = (mode: 'PIN' | 'MASTER') => {
+    setLoginModeRaw(mode);
+    try {
+      localStorage.setItem('nexusfaro_login_tab', mode);
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   // PIN Mode states
   const [selectedUserId, setSelectedUserId] = useState<string>(
@@ -60,7 +80,10 @@ export const LoginScreen: React.FC = () => {
   useEffect(() => {
     if (pendingSwitchUserId) {
       setSelectedUserId(pendingSwitchUserId);
-      setLoginMode('PIN');
+      // No usa selectLoginMode: es un salto forzado a un usuario puntual
+      // (p.ej. "Cambiar" en la barra lateral), no una preferencia de pestaña
+      // para recordar de cara al próximo reload.
+      setLoginModeRaw('PIN');
       setPin('');
       clearPendingSwitch();
     }
@@ -206,7 +229,7 @@ export const LoginScreen: React.FC = () => {
               <button
                 type="button"
                 onClick={() => {
-                  setLoginMode('PIN');
+                  selectLoginMode('PIN');
                   setMasterError(null);
                 }}
                 className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
@@ -222,7 +245,7 @@ export const LoginScreen: React.FC = () => {
               <button
                 type="button"
                 onClick={() => {
-                  setLoginMode('MASTER');
+                  selectLoginMode('MASTER');
                   setPin('');
                 }}
                 className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
