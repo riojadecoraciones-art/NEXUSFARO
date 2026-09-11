@@ -66,10 +66,13 @@ export const Sidebar: React.FC = () => {
       visible: isOwner,
     },
     {
+      // La Llave Maestra opera la plataforma, no vende en el mostrador de
+      // ningún comercio en particular — mostrarle un POS (el de la terminal
+      // física de turno, de rebote) no tiene uso real y sólo suma ruido.
       id: 'pos',
       label: 'Punto de Venta',
       icon: ShoppingCart,
-      visible: true,
+      visible: !isSuperAdmin,
     },
     {
       id: 'inventory',
