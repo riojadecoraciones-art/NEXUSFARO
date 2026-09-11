@@ -42,6 +42,17 @@ export const Sidebar: React.FC = () => {
   const isSuperAdmin = currentUser.role === 'SUPERADMIN' || isSupportMode;
   const isOwner = currentUser.role === 'DUEÑO' || isSuperAdmin;
   const isCashier = currentUser.role === 'CAJERO';
+  /**
+   * Llave Maestra sin ningún negocio elegido para auditar: técnicamente
+   * sigue siendo la misma terminal de un comercio real (por eso currentUser
+   * ya lee como Dueño de ESE comercio), pero mostrarle por defecto el
+   * Dashboard/Inventario/Caja/etc. de ese comercio en particular confunde
+   * el rol — Llave Maestra opera la plataforma, no administra un negocio
+   * puntual. Al elegir "Asistir a este Negocio" (isImpersonating) estos
+   * mismos apartados vuelven a aparecer, ya con los datos reales de ese
+   * negocio elegido.
+   */
+  const hideForBareSuperAdmin = isSuperAdmin && !isImpersonating;
 
   interface NavItem {
     id: ActiveView;
@@ -63,7 +74,7 @@ export const Sidebar: React.FC = () => {
       id: 'dashboard',
       label: 'Panel de Control',
       icon: LayoutDashboard,
-      visible: isOwner,
+      visible: isOwner && !hideForBareSuperAdmin,
     },
     {
       // La Llave Maestra opera la plataforma, no vende en el mostrador de
@@ -78,31 +89,36 @@ export const Sidebar: React.FC = () => {
       id: 'inventory',
       label: 'Inventario',
       icon: Package,
-      visible: isOwner || !!currentUser.canManageInventory,
+      // El usuario sintético de la Llave Maestra tiene canManageInventory en
+      // true fijo (para que un cajero real con ese permiso vea este ítem sin
+      // ser Dueño) — sin el `&& !hideForBareSuperAdmin` afuera del OR, esa
+      // bandera dejaba a Inventario visible igual para la Llave Maestra sin
+      // auditar nada.
+      visible: (isOwner || !!currentUser.canManageInventory) && !hideForBareSuperAdmin,
     },
     {
       id: 'expenses',
       label: 'Gastos Fijos & Negocio',
       icon: ReceiptText,
-      visible: isOwner,
+      visible: isOwner && !hideForBareSuperAdmin,
     },
     {
       id: 'history',
       label: 'Historial',
       icon: History,
-      visible: isOwner,
+      visible: isOwner && !hideForBareSuperAdmin,
     },
     {
       id: 'reports',
       label: 'Reportes',
       icon: BarChart3,
-      visible: isOwner,
+      visible: isOwner && !hideForBareSuperAdmin,
     },
     {
       id: 'cash_register',
       label: 'Control de Caja',
       icon: CircleDollarSign,
-      visible: true,
+      visible: !hideForBareSuperAdmin,
     },
     {
       // Los datos de "Asistir a este Negocio" no incluyen empleados/PIN del
@@ -112,7 +128,7 @@ export const Sidebar: React.FC = () => {
       id: 'employees',
       label: 'Empleados & PINs',
       icon: Users,
-      visible: isOwner && !isImpersonating,
+      visible: isOwner && !isImpersonating && !hideForBareSuperAdmin,
     },
   ];
 
@@ -287,7 +303,7 @@ export const Sidebar: React.FC = () => {
           </span>
         </div>
 
-        {isOwner && (
+        {isOwner && !hideForBareSuperAdmin && (
           <button
             onClick={() => setActiveView('settings')}
             className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium transition-all ${
