@@ -188,7 +188,7 @@ function mapStoreSettingsRow(row: any): StoreInfo {
     cuit: row.cuit || '',
     address: row.address || '',
     phone: row.phone || '',
-    email: row.email || 'riojadecoraciones@gmail.com',
+    email: row.email || '',
     receiptFooter: row.receipt_footer || '¡Gracias por su compra!',
   };
 }
@@ -1005,7 +1005,7 @@ export const storeSettingsService = {
         cuit: '',
         address: '',
         phone: '',
-        email: 'riojadecoraciones@gmail.com',
+        email: '',
         receiptFooter: '¡Gracias por su compra!',
       };
 

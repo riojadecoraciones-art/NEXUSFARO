@@ -4,7 +4,6 @@ export const SEED_USERS: User[] = [
   {
     id: 'usr-1',
     name: 'Dueño / Administrador',
-    email: 'riojadecoraciones@gmail.com',
     role: 'DUEÑO',
     roleTitle: 'Administrador General',
     // El PIN real se define en el primer arranque (ver AppContext): nunca un valor fijo del repo.

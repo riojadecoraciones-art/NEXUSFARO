@@ -328,7 +328,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     cuit: '',
     address: '',
     phone: '',
-    email: 'riojadecoraciones@gmail.com',
+    email: '',
     receiptFooter: '¡Gracias por su compra!',
   });
 

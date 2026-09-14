@@ -271,7 +271,7 @@ export const SupportModal: React.FC = () => {
                   </div>
                   <div>
                     <span className="text-slate-400 block">Email del Dueño:</span>
-                    <strong className="text-slate-900">{storeInfo.email || 'riojadecoraciones@gmail.com'}</strong>
+                    <strong className="text-slate-900">{storeInfo.email || 'No configurado'}</strong>
                   </div>
                   <div>
                     <span className="text-slate-400 block">Estado del Modo Soporte:</span>
