@@ -43,14 +43,14 @@ export const Sidebar: React.FC = () => {
   const isOwner = currentUser.role === 'DUEÑO' || isSuperAdmin;
   const isCashier = currentUser.role === 'CAJERO';
   /**
-   * Llave Maestra sin ningún negocio elegido para auditar: técnicamente
-   * sigue siendo la misma terminal de un comercio real (por eso currentUser
-   * ya lee como Dueño de ESE comercio), pero mostrarle por defecto el
-   * Dashboard/Inventario/Caja/etc. de ese comercio en particular confunde
-   * el rol — Llave Maestra opera la plataforma, no administra un negocio
-   * puntual. Al elegir "Asistir a este Negocio" (isImpersonating) estos
-   * mismos apartados vuelven a aparecer, ya con los datos reales de ese
-   * negocio elegido.
+   * El menú de Dashboard/Inventario/Gastos/Historial/Reportes/Caja se ve
+   * siempre para la Llave Maestra (elija o no un negocio todavía) — sin
+   * auditar ninguno, esas pantallas muestran un cartel de "elegí un
+   * negocio" en vez de datos (ver App.tsx). Lo que sigue ocultando esta
+   * bandera es Empleados (nunca se trae del cliente auditado, es dato
+   * sensible fuera de alcance) y Configuración del Local (edita la
+   * terminal/comercio propio de la sesión real, no tiene sentido antes de
+   * elegir a quién auditar).
    */
   const hideForBareSuperAdmin = isSuperAdmin && !isImpersonating;
 
@@ -74,7 +74,7 @@ export const Sidebar: React.FC = () => {
       id: 'dashboard',
       label: 'Panel de Control',
       icon: LayoutDashboard,
-      visible: isOwner && !hideForBareSuperAdmin,
+      visible: isOwner,
     },
     {
       // La Llave Maestra opera la plataforma, no vende en el mostrador de
@@ -89,36 +89,31 @@ export const Sidebar: React.FC = () => {
       id: 'inventory',
       label: 'Inventario',
       icon: Package,
-      // El usuario sintético de la Llave Maestra tiene canManageInventory en
-      // true fijo (para que un cajero real con ese permiso vea este ítem sin
-      // ser Dueño) — sin el `&& !hideForBareSuperAdmin` afuera del OR, esa
-      // bandera dejaba a Inventario visible igual para la Llave Maestra sin
-      // auditar nada.
-      visible: (isOwner || !!currentUser.canManageInventory) && !hideForBareSuperAdmin,
+      visible: isOwner || !!currentUser.canManageInventory,
     },
     {
       id: 'expenses',
       label: 'Gastos Fijos & Negocio',
       icon: ReceiptText,
-      visible: isOwner && !hideForBareSuperAdmin,
+      visible: isOwner,
     },
     {
       id: 'history',
       label: 'Historial',
       icon: History,
-      visible: isOwner && !hideForBareSuperAdmin,
+      visible: isOwner,
     },
     {
       id: 'reports',
       label: 'Reportes',
       icon: BarChart3,
-      visible: isOwner && !hideForBareSuperAdmin,
+      visible: isOwner,
     },
     {
       id: 'cash_register',
       label: 'Control de Caja',
       icon: CircleDollarSign,
-      visible: !hideForBareSuperAdmin,
+      visible: true,
     },
     {
       // Los datos de "Asistir a este Negocio" no incluyen empleados/PIN del

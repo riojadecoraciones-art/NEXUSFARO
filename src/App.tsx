@@ -26,12 +26,29 @@ import { SupportModal } from './components/SupportModal';
 import { MasterAuthModal } from './components/MasterAuthModal';
 import { MasterPortalView } from './components/MasterPortalView';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { Wrench, ArrowRight, LogOut } from 'lucide-react';
+import { Wrench, ArrowRight, LogOut, Building2 } from 'lucide-react';
+import { ActiveView } from './types';
+
+// Estas pantallas muestran números de UN negocio puntual (ventas, stock,
+// caja...). Sin auditar ninguno ("Asistir a este Negocio"), la Llave
+// Maestra sigue técnicamente conectada a la terminal real de un comercio
+// (ver Sidebar.tsx) — dejar pasar de largo mostraría esos datos propios
+// por accidente. Empleados y Configuración quedan afuera de esta lista
+// a propósito: ya se ocultan solos del menú en este mismo estado.
+const BUSINESS_DATA_VIEWS: ActiveView[] = [
+  'dashboard',
+  'inventory',
+  'expenses',
+  'history',
+  'reports',
+  'cash_register',
+];
 
 const MainLayout: React.FC = () => {
   const {
     currentUser,
     activeView,
+    setActiveView,
     isLoginModalOpen,
     isSupportMode,
     setIsSupportModalOpen,
@@ -101,6 +118,9 @@ const MainLayout: React.FC = () => {
     );
   }
 
+  const isSuperAdmin = currentUser.role === 'SUPERADMIN' || isSupportMode;
+  const needsStoreSelection = isSuperAdmin && !isImpersonating && BUSINESS_DATA_VIEWS.includes(activeView);
+
   return (
     <div className="flex h-screen w-full overflow-hidden bg-[#f8fafc] text-slate-900 font-sans antialiased selection:bg-slate-900 selection:text-white">
       {/* Left Navigation Sidebar */}
@@ -154,16 +174,35 @@ const MainLayout: React.FC = () => {
 
         {/* Dynamic View Router */}
         <main className="flex-1 flex overflow-hidden relative min-h-0">
-          {activeView === 'pos' && <POSView />}
-          {activeView === 'dashboard' && <DashboardView />}
-          {activeView === 'inventory' && <InventoryView />}
-          {activeView === 'expenses' && <ExpensesView />}
-          {activeView === 'history' && <HistoryView />}
-          {activeView === 'reports' && <ReportsView />}
-          {activeView === 'cash_register' && <CashRegisterView />}
-          {activeView === 'employees' && <EmployeesView />}
-          {activeView === 'settings' && <SettingsView />}
-          {activeView === 'master_portal' && <MasterPortalView />}
+          {needsStoreSelection ? (
+            <div className="flex-1 flex flex-col items-center justify-center text-center p-8">
+              <Building2 className="w-16 h-16 text-slate-300 mb-4" />
+              <h2 className="text-xl font-bold text-slate-900">Elegí un negocio para auditar</h2>
+              <p className="text-sm text-slate-500 max-w-sm mt-1">
+                Estos datos pertenecen a un negocio en particular. Andá al Portal Maestro
+                y elegí "Asistir a este Negocio" para ver sus ventas, inventario y números reales.
+              </p>
+              <button
+                onClick={() => setActiveView('master_portal')}
+                className="mt-5 px-5 py-2.5 bg-slate-950 hover:bg-slate-900 text-white font-bold rounded-xl text-sm transition-colors"
+              >
+                Ir al Portal Maestro
+              </button>
+            </div>
+          ) : (
+            <>
+              {activeView === 'pos' && <POSView />}
+              {activeView === 'dashboard' && <DashboardView />}
+              {activeView === 'inventory' && <InventoryView />}
+              {activeView === 'expenses' && <ExpensesView />}
+              {activeView === 'history' && <HistoryView />}
+              {activeView === 'reports' && <ReportsView />}
+              {activeView === 'cash_register' && <CashRegisterView />}
+              {activeView === 'employees' && <EmployeesView />}
+              {activeView === 'settings' && <SettingsView />}
+              {activeView === 'master_portal' && <MasterPortalView />}
+            </>
+          )}
         </main>
       </div>
 
