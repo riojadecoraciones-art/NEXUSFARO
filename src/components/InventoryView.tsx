@@ -43,9 +43,13 @@ export const InventoryView: React.FC = () => {
     stockMovements,
     currentUser,
     showToast,
+    isSupportMode,
   } = useApp();
 
-  const isOwner = currentUser?.role === 'DUEÑO';
+  // Igual que en Sidebar.tsx / ReportsView.tsx: la Llave Maestra auditando
+  // un negocio también tiene que ver el costo/margen real de ese negocio.
+  const isSuperAdmin = currentUser?.role === 'SUPERADMIN' || isSupportMode;
+  const isOwner = currentUser?.role === 'DUEÑO' || isSuperAdmin;
   const canManage = isOwner || currentUser?.canManageInventory;
 
   // Filters state

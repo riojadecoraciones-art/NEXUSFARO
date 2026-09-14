@@ -22,9 +22,14 @@ import {
 } from 'lucide-react';
 
 export const ReportsView: React.FC = () => {
-  const { sales, products, currentUser, showToast } = useApp();
+  const { sales, products, currentUser, showToast, isSupportMode } = useApp();
 
-  const isOwner = currentUser?.role === 'DUEÑO';
+  // Igual que en Sidebar.tsx: la Llave Maestra (SUPERADMIN) auditando un
+  // negocio ("Asistir a este Negocio") tiene que poder ver sus reportes
+  // reales, no sólo el ícono en el menú — antes este chequeo sólo miraba
+  // 'DUEÑO' y bloqueaba la pantalla aunque el menú ya lo dejara entrar.
+  const isSuperAdmin = currentUser?.role === 'SUPERADMIN' || isSupportMode;
+  const isOwner = currentUser?.role === 'DUEÑO' || isSuperAdmin;
 
   // Antes esto era un acumulado histórico eterno: no había ningún filtro de
   // fecha, pese a que el texto de "Rendimiento por Cajero" ya hablaba de
