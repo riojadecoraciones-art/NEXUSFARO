@@ -127,8 +127,9 @@ export const TerminalAuthScreen: React.FC = () => {
           </button>
 
           <p className="text-[11px] text-slate-400 text-center leading-relaxed pt-1">
-            ¿No tenés estas credenciales? Las crea el dueño en Supabase →
-            Authentication → Users.
+            ¿No tenés estas credenciales? Te las tiene que pasar quien te dio de
+            alta el sistema — se generan una única vez desde el Portal Maestro,
+            no se crean en esta pantalla.
           </p>
         </form>
       </div>

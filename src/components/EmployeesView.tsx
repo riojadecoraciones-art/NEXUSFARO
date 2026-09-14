@@ -218,11 +218,6 @@ export const EmployeesView: React.FC = () => {
             </p>
           </div>
         </div>
-
-        <div className="text-xs font-mono text-blue-200 bg-white/10 px-3 py-1.5 rounded-xl shrink-0 flex items-center gap-2">
-          <Mail className="w-3.5 h-3.5 text-blue-300" />
-          <span>Correo de recuperación: riojadecoraciones@gmail.com</span>
-        </div>
       </div>
 
       {/* Grid of Users */}
