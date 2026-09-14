@@ -129,6 +129,7 @@ function mapStockMovementRow(row: any): StockMovement {
     newStock: Number(row.new_stock) || 0,
     reason: row.reason,
     userName: row.user_name,
+    unitCost: row.unit_cost !== null && row.unit_cost !== undefined ? Number(row.unit_cost) : undefined,
   };
 }
 
@@ -855,6 +856,7 @@ export const stockMovementService = {
       new_stock: movement.newStock,
       reason: movement.reason,
       user_name: movement.userName,
+      unit_cost: movement.unitCost ?? null,
     });
 
     if (error) {

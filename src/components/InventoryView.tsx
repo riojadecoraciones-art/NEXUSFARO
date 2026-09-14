@@ -76,6 +76,7 @@ export const InventoryView: React.FC = () => {
   const [adjustmentReason, setAdjustmentReason] = useState<string>('Corrección de conteo físico');
   const [receiptUnits, setReceiptUnits] = useState<string>('');
   const [receiptSupplier, setReceiptSupplier] = useState<string>('');
+  const [receiptCost, setReceiptCost] = useState<string>('');
 
   // New product form
   const [newProdName, setNewProdName] = useState<string>('');
@@ -141,6 +142,7 @@ export const InventoryView: React.FC = () => {
     setSelectedProduct(prod);
     setReceiptUnits('10');
     setReceiptSupplier('Proveedor Principal');
+    setReceiptCost(prod.costPrice ? prod.costPrice.toString() : '');
     setIsReceiptModalOpen(true);
   };
 
@@ -178,7 +180,17 @@ export const InventoryView: React.FC = () => {
       showToast('Ingresa una cantidad mayor a 0', 'error');
       return;
     }
-    addStockReceipt(selectedProduct.id, units, `Ingreso de mercadería (${receiptSupplier || 'Proveedor'})`);
+    const costVal = receiptCost.trim() === '' ? undefined : parseFloat(receiptCost);
+    if (costVal !== undefined && (isNaN(costVal) || costVal < 0)) {
+      showToast('El costo tiene que ser un número válido (o dejalo vacío)', 'error');
+      return;
+    }
+    addStockReceipt(
+      selectedProduct.id,
+      units,
+      `Ingreso de mercadería (${receiptSupplier || 'Proveedor'})`,
+      costVal
+    );
     setIsReceiptModalOpen(false);
   };
 
@@ -1088,6 +1100,7 @@ export const InventoryView: React.FC = () => {
                   <div className="font-bold text-xs text-slate-900">{selectedProduct.name}</div>
                   <div className="text-[11px] text-slate-500">
                     Stock actual: <strong>{selectedProduct.stock} {UNIT_TYPE_LABELS[selectedProduct.unitType]}</strong>
+                    {' • '}Último costo: <strong>${selectedProduct.costPrice.toFixed(2)}</strong>
                   </div>
                 </div>
               </div>
@@ -1105,6 +1118,24 @@ export const InventoryView: React.FC = () => {
                   onChange={(e) => setReceiptUnits(e.target.value)}
                   className="w-full px-3 py-2 border border-slate-300 rounded-xl text-base font-bold text-slate-900 focus:outline-none focus:border-blue-500"
                 />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">
+                  Costo de esta compra ($, por {UNIT_TYPE_LABELS[selectedProduct.unitType]})
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="Dejalo vacío si no cambió"
+                  value={receiptCost}
+                  onChange={(e) => setReceiptCost(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl text-base font-bold text-slate-900 focus:outline-none focus:border-blue-500"
+                />
+                <p className="text-[11px] text-slate-400 mt-1">
+                  Si lo completás, queda como el costo de referencia del producto de ahora en más.
+                </p>
               </div>
 
               <div>
@@ -1329,6 +1360,11 @@ export const InventoryView: React.FC = () => {
                         <div className="font-bold text-slate-900">{mov.productName}</div>
                         <div className="text-[11px] text-slate-500 mt-0.5">
                           {mov.reason} • Responsable: <strong>{mov.userName}</strong>
+                          {mov.unitCost !== undefined && (
+                            <>
+                              {' • '}Costo: <strong className="text-slate-700">${mov.unitCost.toFixed(2)}</strong>
+                            </>
+                          )}
                         </div>
                       </div>
 

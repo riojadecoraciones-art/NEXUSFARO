@@ -197,6 +197,8 @@ export interface StockMovement {
   newStock: number;
   reason: string;
   userName: string;
+  /** Sólo en recepciones reales de mercadería (INGRESO) — el costo de esa compra puntual. */
+  unitCost?: number;
 }
 
 export interface AppAlert {

@@ -116,7 +116,7 @@ interface AppContextType {
   categories: string[];
   stockMovements: StockMovement[];
   adjustStock: (productId: string, newStock: number, reason: string, type?: 'AJUSTE_MERMA' | 'AJUSTE_CONTEO') => Promise<void>;
-  addStockReceipt: (productId: string, quantityToAdd: number, reason: string) => Promise<void>;
+  addStockReceipt: (productId: string, quantityToAdd: number, reason: string, unitCost?: number) => Promise<void>;
   quickRestockProduct: (productId: string, quantityToAdd: number) => Promise<void>;
   addProduct: (productData: Omit<Product, 'id'>) => Promise<void>;
   importProducts: (
@@ -2172,7 +2172,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     showToast(`Stock de "${prod.name}" ajustado a ${safeNewStock} u.`, 'success');
   };
 
-  const addStockReceipt = async (productId: string, quantityToAdd: number, reason: string) => {
+  const addStockReceipt = async (
+    productId: string,
+    quantityToAdd: number,
+    reason: string,
+    unitCost?: number
+  ) => {
     if (blockIfImpersonating()) return;
     if (!currentUser) return;
     if (currentUser.role !== 'DUEÑO' && !currentUser.canManageInventory) {
@@ -2185,6 +2190,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const previousStock = prod.stock;
     const newStock = previousStock + quantityToAdd;
+    // Sólo se actualiza el costo de referencia si viene un valor real y
+    // distinto de "vacío" — dejarlo en blanco significa "no sé/no cambió",
+    // no "pasó a costar $0".
+    const hasNewCost = typeof unitCost === 'number' && Number.isFinite(unitCost) && unitCost >= 0;
 
     const movement: StockMovement = {
       id: `stk-rec-${Date.now()}`,
@@ -2197,19 +2206,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       newStock,
       reason: reason || 'Ingreso de mercadería / Proveedor',
       userName: currentUser.name,
+      unitCost: hasNewCost ? unitCost : undefined,
     };
 
     try {
       await Promise.all([
         productService.updateStock(productId, newStock),
         stockMovementService.create(movement),
+        hasNewCost ? productService.update(productId, { costPrice: unitCost }) : Promise.resolve(),
       ]);
     } catch (e) {
       console.error('Error adding stock receipt in Supabase:', e);
     }
 
     setProducts((prev) =>
-      prev.map((p) => (p.id === productId ? { ...p, stock: newStock } : p))
+      prev.map((p) =>
+        p.id === productId ? { ...p, stock: newStock, costPrice: hasNewCost ? unitCost : p.costPrice } : p
+      )
     );
 
     setStockMovements((prev) => [movement, ...prev]);
@@ -2218,7 +2231,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setAlerts((prev) => prev.filter((a) => a.productId !== prod.id && !a.message.includes(prod.name)));
     }
 
-    showToast(`Se agregaron +${quantityToAdd} unidades a "${prod.name}"`, 'success');
+    const unitLabel = UNIT_TYPE_LABELS[prod.unitType];
+    showToast(
+      hasNewCost
+        ? `Se agregaron +${quantityToAdd} ${unitLabel} a "${prod.name}" — costo actualizado a $${unitCost!.toFixed(2)}`
+        : `Se agregaron +${quantityToAdd} ${unitLabel} a "${prod.name}"`,
+      'success'
+    );
   };
 
   const quickRestockProduct = async (productId: string, quantityToAdd: number) => {
