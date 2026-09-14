@@ -49,6 +49,7 @@ export const MasterPortalView: React.FC = () => {
     updateStoreTenant,
     deleteStoreTenant,
     provisionStoreTerminal,
+    resetStoreTerminalPassword,
     impersonateStore,
     isImpersonationLoading,
     addUser,
@@ -81,6 +82,10 @@ export const MasterPortalView: React.FC = () => {
   const [provisionEmail, setProvisionEmail] = useState<string>('');
   const [isProvisioning, setIsProvisioning] = useState<boolean>(false);
   const [provisionResult, setProvisionResult] = useState<{ email: string; password: string } | null>(null);
+
+  // Modal: resetear la contraseña de una terminal que el comercio ya perdió
+  const [isResettingPassword, setIsResettingPassword] = useState<boolean>(false);
+  const [resetPasswordResult, setResetPasswordResult] = useState<{ storeName: string; email: string; password: string } | null>(null);
 
   // Store Form state
   const [storeForm, setStoreForm] = useState<{
@@ -256,6 +261,27 @@ export const MasterPortalView: React.FC = () => {
 
     if (res.success && res.email && res.password) {
       setProvisionResult({ email: res.email, password: res.password });
+    } else {
+      showToast(res.message, 'error');
+    }
+  };
+
+  const handleResetTerminalPassword = async (store: StoreTenant) => {
+    if (!store.terminalEmail) return;
+    if (
+      !confirm(
+        `¿Resetear la contraseña de la terminal de "${store.name}"?\n\nLa contraseña actual (${store.terminalEmail}) dejará de funcionar de inmediato.`
+      )
+    ) {
+      return;
+    }
+
+    setIsResettingPassword(true);
+    const res = await resetStoreTerminalPassword(store.id);
+    setIsResettingPassword(false);
+
+    if (res.success && res.email && res.password) {
+      setResetPasswordResult({ storeName: store.name, email: res.email, password: res.password });
     } else {
       showToast(res.message, 'error');
     }
@@ -647,9 +673,21 @@ export const MasterPortalView: React.FC = () => {
                           Sin esto, el dueño del comercio no tiene forma de entrar al sistema. */}
                       <div className="pt-2 mt-1 border-t border-slate-100">
                         {store.terminalEmail ? (
-                          <div className="flex items-center gap-2 text-[11px] text-emerald-700 font-semibold min-w-0 py-1">
-                            <Terminal className="w-3.5 h-3.5 shrink-0" />
-                            <span className="truncate">Terminal activada: {store.terminalEmail}</span>
+                          <div className="flex items-center justify-between gap-2 min-w-0 py-1">
+                            <div className="flex items-center gap-2 text-[11px] text-emerald-700 font-semibold min-w-0">
+                              <Terminal className="w-3.5 h-3.5 shrink-0" />
+                              <span className="truncate">Terminal activada: {store.terminalEmail}</span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleResetTerminalPassword(store)}
+                              disabled={isResettingPassword}
+                              className="shrink-0 flex items-center gap-1 text-[11px] text-blue-600 hover:text-blue-800 font-bold disabled:opacity-50"
+                              title="El cliente perdió su contraseña: generar una nueva"
+                            >
+                              <KeyRound className="w-3.5 h-3.5" />
+                              <span>Resetear</span>
+                            </button>
                           </div>
                         ) : (
                           <button
@@ -1213,6 +1251,86 @@ export const MasterPortalView: React.FC = () => {
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Modal: resultado de resetear la contraseña de una terminal */}
+      {resetPasswordResult && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
+          <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl border border-slate-200 animate-in zoom-in-95">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
+                  <KeyRound className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-900 text-lg">Contraseña Reseteada</h3>
+                  <p className="text-xs text-slate-500">{resetPasswordResult.storeName}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setResetPasswordResult(null)}
+                className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-[11px] text-amber-900 font-semibold flex items-start gap-2">
+                <ShieldAlert className="w-4 h-4 shrink-0 text-amber-600 mt-0.5" />
+                <span>
+                  Copiá estos datos ahora y pasáselos al comercio por un canal seguro. La
+                  contraseña no se vuelve a mostrar, y la anterior ya dejó de funcionar.
+                </span>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Email</label>
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-mono truncate">
+                    {resetPasswordResult.email}
+                  </code>
+                  <button
+                    type="button"
+                    onClick={() => handleCopy(resetPasswordResult.email, 'Email')}
+                    className="p-2.5 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition-colors shrink-0"
+                    title="Copiar email"
+                  >
+                    <Copy className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Contraseña Nueva</label>
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-mono truncate">
+                    {resetPasswordResult.password}
+                  </code>
+                  <button
+                    type="button"
+                    onClick={() => handleCopy(resetPasswordResult.password, 'Contraseña')}
+                    className="p-2.5 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition-colors shrink-0"
+                    title="Copiar contraseña"
+                  >
+                    <Copy className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex justify-end pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setResetPasswordResult(null)}
+                  className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl text-xs shadow-md flex items-center gap-2"
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span>Ya lo copié, cerrar</span>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

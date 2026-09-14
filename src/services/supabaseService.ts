@@ -1302,6 +1302,32 @@ export const storeTenantService = {
   },
 
   /**
+   * Resetea la contraseña de la terminal de un comercio (el cliente la
+   * perdió y no hay ningún flujo de "olvidé mi contraseña" en esa pantalla,
+   * a propósito: es una cuenta compartida de la caja, no una cuenta
+   * personal con recuperación por email). Mismo mecanismo que provisionar,
+   * pero contra una cuenta que ya existe.
+   */
+  async resetTerminalPassword(
+    storeId: string
+  ): Promise<{ success: boolean; email?: string; password?: string; message: string }> {
+    const { data, error } = await supabase.functions.invoke('reset-store-terminal-password', {
+      body: { storeId },
+    });
+
+    if (error) {
+      console.error('Error invocando reset-store-terminal-password:', error);
+      return { success: false, message: 'No se pudo resetear la contraseña. Probá de nuevo.' };
+    }
+    if (!data?.success) {
+      console.error('reset-store-terminal-password respondió sin éxito:', data);
+      return { success: false, message: data?.error || 'No se pudo resetear la contraseña.' };
+    }
+
+    return { success: true, email: data.email, password: data.password, message: 'Contraseña reseteada' };
+  },
+
+  /**
    * Trae los datos operativos reales de OTRO comercio (ventas, productos,
    * gastos, caja, etc.) para el modo "Asistir a este Negocio" del
    * SUPERADMIN, vía la Edge Function get-store-snapshot. No pasa por RLS

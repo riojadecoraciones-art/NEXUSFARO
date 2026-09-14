@@ -177,6 +177,22 @@ set raw_app_meta_data = raw_app_meta_data
 where email = '<email-de-la-terminal-nueva>';
 ```
 
+#### `reset-store-terminal-password` (Edge Function)
+
+Botón "Resetear" al lado de "Terminal activada: ..." en cada tarjeta de
+negocio del Portal Maestro — para cuando un cliente perdió su contraseña
+de terminal (no hay ningún flujo de "olvidé mi contraseña" en esa pantalla
+a propósito: es una cuenta compartida de la caja, no una cuenta personal
+con recuperación por email).
+
+Mismo patrón de autenticación que `provision-store-terminal` (`auth.getUser()`
++ chequeo de `app_metadata.role === 'superadmin'` antes de tocar nada con
+`service_role`). Busca la cuenta por `stores.terminal_email` (la Admin API
+no tiene "buscar por email" directo, así que pagina `auth.admin.listUsers()`
+y busca ahí) y le pisa la contraseña con `auth.admin.updateUserById()`. La
+contraseña nueva se genera en el servidor y se muestra una única vez, igual
+que al aprovisionar.
+
 ## "Asistir a este Negocio" (auditoría de soporte)
 
 El botón "Asistir a este Negocio" del Portal Maestro trae los datos

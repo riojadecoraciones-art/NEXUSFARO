@@ -202,6 +202,9 @@ interface AppContextType {
     storeId: string,
     terminalEmail: string
   ) => Promise<{ success: boolean; email?: string; password?: string; message: string }>;
+  resetStoreTerminalPassword: (
+    storeId: string
+  ) => Promise<{ success: boolean; email?: string; password?: string; message: string }>;
   loginMasterSuperAdmin: (password: string) => Promise<{ success: boolean; message: string }>;
   impersonateStore: (storeId: string) => Promise<void>;
   exitImpersonation: () => Promise<void>;
@@ -2725,6 +2728,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   /**
+   * Resetea la contraseña de la terminal de un comercio que ya la tiene
+   * activada — no hay estado local que actualizar (el email de la terminal
+   * no cambia, sólo la contraseña), así que esto es un pasamanos directo a
+   * la Edge Function.
+   */
+  const resetStoreTerminalPassword = async (
+    storeId: string
+  ): Promise<{ success: boolean; email?: string; password?: string; message: string }> => {
+    return storeTenantService.resetTerminalPassword(storeId);
+  };
+
+  /**
    * Trae los datos operativos REALES del comercio elegido (ventas, productos,
    * gastos, caja, etc.) vía la Edge Function get-store-snapshot, y recién
    * ahí activa el modo auditoría. Antes esto sólo cambiaba el branding
@@ -3057,6 +3072,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateStoreTenant,
         deleteStoreTenant,
         provisionStoreTerminal,
+        resetStoreTerminalPassword,
         impersonateStore,
         exitImpersonation,
         isImpersonating,
