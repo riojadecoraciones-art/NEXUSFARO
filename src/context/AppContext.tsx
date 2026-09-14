@@ -525,6 +525,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           );
         } catch (e) {
           console.warn('Could not seed default user in Supabase', e);
+          // Antes 'users' se quedaba pegado en SEED_USERS (el estado inicial)
+          // cuando el alta automática fallaba — p.ej. una terminal de Llave
+          // Maestra pura, sin comercio asignado, donde manage-employee
+          // rechaza el alta a propósito (no tiene store_id). Eso hacía
+          // aparecer una tarjeta "Dueño / Administrador" que parecía real
+          // pero no existía en la base y no podía iniciar sesión (su PIN
+          // vacío nunca coincide con nada). Reflejar la lista vacía de
+          // verdad evita ese fantasma.
+          setUsers([]);
         }
       }
 
