@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import confetti from 'canvas-confetti';
 import { Printer, Mail, PlusCircle, CheckCircle, X, RefreshCw, Send } from 'lucide-react';
 import { useApp } from '../context/AppContext';
-import { Sale } from '../types';
+import { Sale, UNIT_TYPE_LABELS } from '../types';
 
 interface ReceiptModalProps {
   sale: Sale | null;
@@ -118,7 +118,9 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
               {sale.items.map((item, idx) => (
                 <div key={idx} className="grid grid-cols-12 text-[11px]">
                   <span className="col-span-6 truncate font-sans text-slate-900">{item.productName}</span>
-                  <span className="col-span-2 text-center">{item.quantity}</span>
+                  <span className="col-span-2 text-center">
+                    {item.quantity} {UNIT_TYPE_LABELS[item.unitType]}
+                  </span>
                   <span className="col-span-2 text-right">${item.unitPrice.toFixed(2)}</span>
                   <span className="col-span-2 text-right font-bold">${item.total.toFixed(2)}</span>
                 </div>

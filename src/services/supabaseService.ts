@@ -41,6 +41,7 @@ function mapProductRow(row: any): Product {
     minStock: Number(row.min_stock) || 5,
     imageUrl: row.image_url || '',
     description: row.description || undefined,
+    unitType: (row.unit_type as Product['unitType']) || 'UNIDAD',
   };
 }
 
@@ -87,6 +88,7 @@ function mapSaleItemRow(row: any): SaleItem {
     unitCost: Number(row.unit_cost) || 0,
     discount: Number(row.discount) || 0,
     total: Number(row.total) || 0,
+    unitType: (row.unit_type as SaleItem['unitType']) || 'UNIDAD',
   };
 }
 
@@ -444,6 +446,7 @@ export const productService = {
         min_stock: product.minStock,
         image_url: product.imageUrl || '',
         description: product.description || '',
+        unit_type: product.unitType || 'UNIDAD',
       })
       .select()
       .single();
@@ -471,6 +474,7 @@ export const productService = {
     if (updates.minStock !== undefined) dbUpdates.min_stock = updates.minStock;
     if (updates.imageUrl !== undefined) dbUpdates.image_url = updates.imageUrl;
     if (updates.description !== undefined) dbUpdates.description = updates.description;
+    if (updates.unitType !== undefined) dbUpdates.unit_type = updates.unitType;
 
     const { error } = await supabase.from('products').update(dbUpdates).eq('id', id);
     if (error) {
@@ -537,6 +541,7 @@ export const productService = {
         stock: r.stock,
         min_stock: r.minStock,
         description: r.description || '',
+        unit_type: r.unitType || 'UNIDAD',
       }));
 
       const { error } = await supabase
@@ -788,6 +793,7 @@ export const saleService = {
         unit_cost: item.unitCost,
         discount: item.discount,
         total: item.total,
+        unit_type: item.unitType || 'UNIDAD',
       }));
 
       const { error: itemsError } = await supabase.from('sale_items').insert(itemsToInsert);

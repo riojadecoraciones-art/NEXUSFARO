@@ -22,7 +22,7 @@ import {
   Check,
   Upload,
 } from 'lucide-react';
-import { Product, ProductCategory } from '../types';
+import { Product, ProductCategory, ProductUnitType, UNIT_TYPE_LABELS, isFractionalUnit } from '../types';
 import { ProductImage } from './ProductImage';
 import { ProductImageSelector } from './ProductImageSelector';
 import { ImportProductsModal } from './ImportProductsModal';
@@ -87,6 +87,7 @@ export const InventoryView: React.FC = () => {
   const [newProdStock, setNewProdStock] = useState<string>('');
   const [newProdMinStock, setNewProdMinStock] = useState<string>('5');
   const [newProdImage, setNewProdImage] = useState<string>('');
+  const [newProdUnitType, setNewProdUnitType] = useState<ProductUnitType>('UNIDAD');
 
   // Edit product form
   const [editProdName, setEditProdName] = useState<string>('');
@@ -97,6 +98,7 @@ export const InventoryView: React.FC = () => {
   const [editProdCostPrice, setEditProdCostPrice] = useState<string>('');
   const [editProdMinStock, setEditProdMinStock] = useState<string>('5');
   const [editProdImage, setEditProdImage] = useState<string>('');
+  const [editProdUnitType, setEditProdUnitType] = useState<ProductUnitType>('UNIDAD');
 
   // Category Management Form
   const [newCategoryName, setNewCategoryName] = useState<string>('');
@@ -152,13 +154,14 @@ export const InventoryView: React.FC = () => {
     setEditProdCostPrice(prod.costPrice.toString());
     setEditProdMinStock(prod.minStock.toString());
     setEditProdImage(prod.imageUrl);
+    setEditProdUnitType(prod.unitType);
     setIsEditModalOpen(true);
   };
 
   const handleSaveAdjustment = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedProduct) return;
-    const stockVal = parseInt(adjustmentStock, 10);
+    const stockVal = parseFloat(adjustmentStock);
     if (isNaN(stockVal) || stockVal < 0) {
       showToast('Ingresa una cantidad de stock válida', 'error');
       return;
@@ -170,7 +173,7 @@ export const InventoryView: React.FC = () => {
   const handleSaveReceipt = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedProduct) return;
-    const units = parseInt(receiptUnits, 10);
+    const units = parseFloat(receiptUnits);
     if (isNaN(units) || units <= 0) {
       showToast('Ingresa una cantidad mayor a 0', 'error');
       return;
@@ -193,9 +196,10 @@ export const InventoryView: React.FC = () => {
       category: newProdCategory || categories[0] || 'General',
       salePrice: parseFloat(newProdSalePrice) || 0,
       costPrice: parseFloat(newProdCostPrice) || 0,
-      stock: parseInt(newProdStock, 10) || 0,
-      minStock: parseInt(newProdMinStock, 10) || 5,
+      stock: parseFloat(newProdStock) || 0,
+      minStock: parseFloat(newProdMinStock) || 5,
       imageUrl: newProdImage.trim(),
+      unitType: newProdUnitType,
     });
 
     setIsAddModalOpen(false);
@@ -222,8 +226,9 @@ export const InventoryView: React.FC = () => {
       category: editProdCategory || selectedProduct.category,
       salePrice: parseFloat(editProdSalePrice) || 0,
       costPrice: parseFloat(editProdCostPrice) || 0,
-      minStock: parseInt(editProdMinStock, 10) || 5,
+      minStock: parseFloat(editProdMinStock) || 5,
       imageUrl: editProdImage.trim(),
+      unitType: editProdUnitType,
     });
 
     setIsEditModalOpen(false);
@@ -454,7 +459,7 @@ export const InventoryView: React.FC = () => {
                               isOutOfStock ? 'text-rose-600' : isLowStock ? 'text-amber-700' : 'text-slate-900'
                             }`}
                           >
-                            {prod.stock} u.
+                            {prod.stock} {UNIT_TYPE_LABELS[prod.unitType]}
                           </span>
                           <span className="text-[10px] text-slate-400">mín. {prod.minStock}</span>
                         </div>
@@ -763,7 +768,7 @@ export const InventoryView: React.FC = () => {
               <div>
                 <div className="font-bold text-xs text-slate-900">{productToDelete.name}</div>
                 <div className="text-[11px] text-slate-500 mt-0.5">
-                  SKU: <strong className="font-mono">{productToDelete.sku}</strong> • Stock actual: <strong>{productToDelete.stock} u.</strong>
+                  SKU: <strong className="font-mono">{productToDelete.sku}</strong> • Stock actual: <strong>{productToDelete.stock} {UNIT_TYPE_LABELS[productToDelete.unitType]}</strong>
                 </div>
               </div>
             </div>
@@ -861,6 +866,26 @@ export const InventoryView: React.FC = () => {
                 </div>
               </div>
 
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">Se vende por</label>
+                <select
+                  value={editProdUnitType}
+                  onChange={(e) => setEditProdUnitType(e.target.value as ProductUnitType)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:border-blue-500"
+                >
+                  <option value="UNIDAD">Unidad entera (1, 2, 3...)</option>
+                  <option value="KG">Kilogramo (kg) — se vende suelto por peso</option>
+                  <option value="GRAMO">Gramo (g) — se vende suelto por peso</option>
+                  <option value="LITRO">Litro (L) — se vende suelto por volumen</option>
+                  <option value="ML">Mililitro (ml) — se vende suelto por volumen</option>
+                </select>
+                {editProdUnitType !== selectedProduct.unitType && (
+                  <p className="text-[11px] text-amber-600 font-semibold mt-1">
+                    El stock actual ({selectedProduct.stock}) queda igual — revisalo si cambiás la unidad.
+                  </p>
+                )}
+              </div>
+
               <div className="grid grid-cols-3 gap-3">
                 <div>
                   <label className="text-xs font-bold text-slate-700 block mb-1">Precio Venta ($)</label>
@@ -885,10 +910,13 @@ export const InventoryView: React.FC = () => {
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-bold text-slate-700 block mb-1">Stock Mínimo</label>
+                  <label className="text-xs font-bold text-slate-700 block mb-1">
+                    Stock Mínimo ({UNIT_TYPE_LABELS[editProdUnitType]})
+                  </label>
                   <input
                     type="number"
-                    min="1"
+                    min="0"
+                    step={isFractionalUnit(editProdUnitType) ? '0.001' : '1'}
                     required
                     value={editProdMinStock}
                     onChange={(e) => setEditProdMinStock(e.target.value)}
@@ -961,15 +989,20 @@ export const InventoryView: React.FC = () => {
                 </div>
                 <div>
                   <div className="font-bold text-xs text-slate-900">{selectedProduct.name}</div>
-                  <div className="text-[11px] text-slate-500">Stock actual: <strong>{selectedProduct.stock} u.</strong></div>
+                  <div className="text-[11px] text-slate-500">
+                    Stock actual: <strong>{selectedProduct.stock} {UNIT_TYPE_LABELS[selectedProduct.unitType]}</strong>
+                  </div>
                 </div>
               </div>
 
               <div>
-                <label className="text-xs font-bold text-slate-700 block mb-1">Nuevo Stock Real</label>
+                <label className="text-xs font-bold text-slate-700 block mb-1">
+                  Nuevo Stock Real ({UNIT_TYPE_LABELS[selectedProduct.unitType]})
+                </label>
                 <input
                   type="number"
                   min="0"
+                  step={isFractionalUnit(selectedProduct.unitType) ? '0.001' : '1'}
                   required
                   value={adjustmentStock}
                   onChange={(e) => setAdjustmentStock(e.target.value)}
@@ -1053,15 +1086,20 @@ export const InventoryView: React.FC = () => {
                 </div>
                 <div>
                   <div className="font-bold text-xs text-slate-900">{selectedProduct.name}</div>
-                  <div className="text-[11px] text-slate-500">Stock actual: <strong>{selectedProduct.stock} u.</strong></div>
+                  <div className="text-[11px] text-slate-500">
+                    Stock actual: <strong>{selectedProduct.stock} {UNIT_TYPE_LABELS[selectedProduct.unitType]}</strong>
+                  </div>
                 </div>
               </div>
 
               <div>
-                <label className="text-xs font-bold text-slate-700 block mb-1">Cantidad a Sumar (Unidades)</label>
+                <label className="text-xs font-bold text-slate-700 block mb-1">
+                  Cantidad a Sumar ({UNIT_TYPE_LABELS[selectedProduct.unitType]})
+                </label>
                 <input
                   type="number"
-                  min="1"
+                  min={isFractionalUnit(selectedProduct.unitType) ? '0.001' : '1'}
+                  step={isFractionalUnit(selectedProduct.unitType) ? '0.001' : '1'}
                   required
                   value={receiptUnits}
                   onChange={(e) => setReceiptUnits(e.target.value)}
@@ -1165,6 +1203,21 @@ export const InventoryView: React.FC = () => {
                 </div>
               </div>
 
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">Se vende por</label>
+                <select
+                  value={newProdUnitType}
+                  onChange={(e) => setNewProdUnitType(e.target.value as ProductUnitType)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:border-blue-500"
+                >
+                  <option value="UNIDAD">Unidad entera (1, 2, 3...)</option>
+                  <option value="KG">Kilogramo (kg) — se vende suelto por peso</option>
+                  <option value="GRAMO">Gramo (g) — se vende suelto por peso</option>
+                  <option value="LITRO">Litro (L) — se vende suelto por volumen</option>
+                  <option value="ML">Mililitro (ml) — se vende suelto por volumen</option>
+                </select>
+              </div>
+
               <div className="grid grid-cols-3 gap-3">
                 <div>
                   <label className="text-xs font-bold text-slate-700 block mb-1">Precio Venta ($)</label>
@@ -1191,9 +1244,12 @@ export const InventoryView: React.FC = () => {
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-bold text-slate-700 block mb-1">Stock Inicial</label>
+                  <label className="text-xs font-bold text-slate-700 block mb-1">
+                    Stock Inicial ({UNIT_TYPE_LABELS[newProdUnitType]})
+                  </label>
                   <input
                     type="number"
+                    step={isFractionalUnit(newProdUnitType) ? '0.001' : '1'}
                     required
                     value={newProdStock}
                     onChange={(e) => setNewProdStock(e.target.value)}
@@ -1204,9 +1260,12 @@ export const InventoryView: React.FC = () => {
               </div>
 
               <div>
-                <label className="text-xs font-bold text-slate-700 block mb-1">Stock Mínimo (Alerta)</label>
+                <label className="text-xs font-bold text-slate-700 block mb-1">
+                  Stock Mínimo ({UNIT_TYPE_LABELS[newProdUnitType]}, para la alerta)
+                </label>
                 <input
                   type="number"
+                  step={isFractionalUnit(newProdUnitType) ? '0.001' : '1'}
                   value={newProdMinStock}
                   onChange={(e) => setNewProdMinStock(e.target.value)}
                   placeholder="5"
@@ -1261,25 +1320,29 @@ export const InventoryView: React.FC = () => {
                   No hay movimientos registrados en esta sesión.
                 </div>
               ) : (
-                stockMovements.map((mov) => (
-                  <div key={mov.id} className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs flex items-center justify-between gap-3">
-                    <div>
-                      <div className="font-bold text-slate-900">{mov.productName}</div>
-                      <div className="text-[11px] text-slate-500 mt-0.5">
-                        {mov.reason} • Responsable: <strong>{mov.userName}</strong>
+                stockMovements.map((mov) => {
+                  const movProduct = products.find((p) => p.id === mov.productId);
+                  const unitLabel = movProduct ? UNIT_TYPE_LABELS[movProduct.unitType] : 'u.';
+                  return (
+                    <div key={mov.id} className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs flex items-center justify-between gap-3">
+                      <div>
+                        <div className="font-bold text-slate-900">{mov.productName}</div>
+                        <div className="text-[11px] text-slate-500 mt-0.5">
+                          {mov.reason} • Responsable: <strong>{mov.userName}</strong>
+                        </div>
                       </div>
-                    </div>
 
-                    <div className="text-right shrink-0">
-                      <div className={`font-mono font-bold text-sm ${mov.quantityDelta > 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                        {mov.quantityDelta > 0 ? `+${mov.quantityDelta}` : mov.quantityDelta} u.
-                      </div>
-                      <div className="text-[10px] text-slate-400">
-                        {mov.previousStock} → {mov.newStock} u.
+                      <div className="text-right shrink-0">
+                        <div className={`font-mono font-bold text-sm ${mov.quantityDelta > 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                          {mov.quantityDelta > 0 ? `+${mov.quantityDelta}` : mov.quantityDelta} {unitLabel}
+                        </div>
+                        <div className="text-[10px] text-slate-400">
+                          {mov.previousStock} → {mov.newStock} {unitLabel}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
 

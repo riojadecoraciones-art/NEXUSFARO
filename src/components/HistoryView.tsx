@@ -15,7 +15,7 @@ import {
   Calendar,
   User as UserIcon,
 } from 'lucide-react';
-import { Sale } from '../types';
+import { Sale, UNIT_TYPE_LABELS } from '../types';
 
 export const HistoryView: React.FC = () => {
   const { sales, refundSale, currentUser, showToast } = useApp();
@@ -260,7 +260,9 @@ export const HistoryView: React.FC = () => {
                     <div key={idx} className="flex items-center justify-between text-xs">
                       <div>
                         <span className="font-bold text-slate-900">{it.productName}</span>
-                        <span className="text-slate-400 font-mono ml-1.5">({it.quantity} x ${it.unitPrice.toFixed(2)})</span>
+                        <span className="text-slate-400 font-mono ml-1.5">
+                          ({it.quantity} {UNIT_TYPE_LABELS[it.unitType]} x ${it.unitPrice.toFixed(2)})
+                        </span>
                       </div>
                       <span className="font-mono font-bold text-slate-900">${it.total.toFixed(2)}</span>
                     </div>

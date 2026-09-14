@@ -28,6 +28,27 @@ export interface EmployeeAuthProof {
 
 export type ProductCategory = string;
 
+/**
+ * Cómo se vende el producto: por unidad entera (lo normal) o fraccionado
+ * por peso/volumen (almacén naturista, dietética, fiambrería...). stock,
+ * minStock y CartItem.quantity ya admiten decimales a nivel de base de
+ * datos para cualquier producto — esto es sólo la etiqueta que le dice al
+ * POS si tiene sentido pedir "0.350" en vez de forzar números enteros.
+ */
+export type ProductUnitType = 'UNIDAD' | 'KG' | 'GRAMO' | 'LITRO' | 'ML';
+
+export const UNIT_TYPE_LABELS: Record<ProductUnitType, string> = {
+  UNIDAD: 'u.',
+  KG: 'kg',
+  GRAMO: 'g',
+  LITRO: 'L',
+  ML: 'ml',
+};
+
+export function isFractionalUnit(unitType: ProductUnitType): boolean {
+  return unitType !== 'UNIDAD';
+}
+
 export interface Product {
   id: string;
   name: string;
@@ -40,6 +61,7 @@ export interface Product {
   minStock: number;
   imageUrl: string;
   description?: string;
+  unitType: ProductUnitType;
 }
 
 /** Una fila ya mapeada y validada, lista para mandar a bulkUpsert(). */
@@ -53,6 +75,7 @@ export interface ProductImportRow {
   stock: number;
   minStock: number;
   description?: string;
+  unitType: ProductUnitType;
 }
 
 export interface ProductImportRowError {
@@ -90,6 +113,12 @@ export interface SaleItem {
   unitCost: number;
   discount: number;
   total: number;
+  /**
+   * Copiado del producto al momento de la venta (no una referencia en vivo)
+   * — igual que unitPrice/unitCost, para que un ticket viejo siga mostrando
+   * "0.350 kg" aunque el producto se borre o le cambien la unidad después.
+   */
+  unitType: ProductUnitType;
 }
 
 export type SaleStatus = 'COMPLETADA' | 'ANULADA_DEVUELTA';

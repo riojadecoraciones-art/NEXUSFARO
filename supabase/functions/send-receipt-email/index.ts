@@ -47,7 +47,18 @@ interface SaleItemPayload {
   quantity: number;
   unitPrice: number;
   total: number;
+  unitType: string;
 }
+
+// Mismo mapeo que UNIT_TYPE_LABELS en src/types.ts — esta función corre
+// aparte (Deno, no comparte módulos con el frontend), así que se repite acá.
+const UNIT_TYPE_LABELS: Record<string, string> = {
+  UNIDAD: 'u.',
+  KG: 'kg',
+  GRAMO: 'g',
+  LITRO: 'L',
+  ML: 'ml',
+};
 
 interface SalePayload {
   ticketNumber: string;
@@ -92,7 +103,7 @@ function buildReceiptHtml(sale: SalePayload, store: StoreInfoPayload): string {
       (item) => `
         <tr>
           <td style="padding:6px 4px;border-bottom:1px solid #e2e8f0;">${escapeHtml(item.productName)}</td>
-          <td style="padding:6px 4px;border-bottom:1px solid #e2e8f0;text-align:center;">${escapeHtml(String(item.quantity))}</td>
+          <td style="padding:6px 4px;border-bottom:1px solid #e2e8f0;text-align:center;">${escapeHtml(String(item.quantity))} ${escapeHtml(UNIT_TYPE_LABELS[item.unitType] || 'u.')}</td>
           <td style="padding:6px 4px;border-bottom:1px solid #e2e8f0;text-align:right;">${MONEY(item.unitPrice)}</td>
           <td style="padding:6px 4px;border-bottom:1px solid #e2e8f0;text-align:right;font-weight:bold;">${MONEY(item.total)}</td>
         </tr>`
@@ -247,6 +258,7 @@ Deno.serve(async (req: Request) => {
       quantity: Number(row.quantity) || 0,
       unitPrice: Number(row.unit_price) || 0,
       total: Number(row.total) || 0,
+      unitType: row.unit_type || 'UNIDAD',
     })),
     subtotal: Number(saleRow.subtotal) || 0,
     discountTotal: Number(saleRow.discount_total) || 0,

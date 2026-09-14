@@ -22,6 +22,8 @@ import {
   EmployeeAuthProof,
   ProductImportRow,
   ProductImportResult,
+  UNIT_TYPE_LABELS,
+  isFractionalUnit,
 } from '../types';
 import { SEED_USERS, SEED_PRODUCTS, SEED_SALES, SEED_ALERTS } from '../mockData';
 import { sounds } from '../utils/soundEffects';
@@ -130,9 +132,10 @@ interface AppContextType {
 
   // POS & Cart
   cart: CartItem[];
-  addToCart: (product: Product) => void;
-  scanBarcodeOrSku: (code: string) => { success: boolean; product?: Product; error?: string };
+  addToCart: (product: Product, quantity?: number) => void;
+  scanBarcodeOrSku: (code: string) => { success: boolean; product?: Product; error?: string; needsWeighing?: boolean };
   updateCartQuantity: (productId: string, delta: number) => void;
+  setCartItemQuantity: (productId: string, quantity: number) => void;
   removeFromCart: (productId: string) => void;
   clearCart: () => void;
   taxPercent: number;
@@ -1473,28 +1476,44 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [cart, orderDiscountPercent, taxPercent]);
 
   // Cart Actions
-  const addToCart = useCallback((product: Product) => {
+  /**
+   * quantity por defecto sigue siendo 1 (compatibilidad con todos los call
+   * sites existentes: escanear código, tocar un producto por unidad). Para
+   * productos que se venden por peso/volumen (WeighProductModal) se llama
+   * con la cantidad pesada — y si ya había una cantidad de ese producto en
+   * el carrito, se suma en vez de reemplazar (dos pesadas del mismo
+   * producto en la misma venta).
+   */
+  const addToCart = useCallback((product: Product, quantity: number = 1) => {
     if (product.stock <= 0) {
       showToast(`"${product.name}" está agotado`, 'error');
       return;
     }
+    if (quantity <= 0) return;
+
+    const unitLabel = UNIT_TYPE_LABELS[product.unitType];
 
     setCart((prev) => {
       const existing = prev.find((item) => item.product.id === product.id);
       if (existing) {
-        if (existing.quantity >= product.stock) {
-          showToast(`No hay más stock disponible (${product.stock} u.)`, 'warning');
+        const newQty = existing.quantity + quantity;
+        if (newQty > product.stock) {
+          showToast(`No hay más stock disponible (${product.stock} ${unitLabel})`, 'warning');
           return prev;
         }
         return prev.map((item) =>
-          item.product.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
+          item.product.id === product.id ? { ...item, quantity: newQty } : item
         );
       }
-      return [...prev, { product, quantity: 1 }];
+      if (quantity > product.stock) {
+        showToast(`No hay más stock disponible (${product.stock} ${unitLabel})`, 'warning');
+        return prev;
+      }
+      return [...prev, { product, quantity }];
     });
   }, [showToast]);
 
-  const scanBarcodeOrSku = useCallback((code: string): { success: boolean; product?: Product; error?: string } => {
+  const scanBarcodeOrSku = useCallback((code: string): { success: boolean; product?: Product; error?: string; needsWeighing?: boolean } => {
     const clean = code.trim();
     if (!clean) return { success: false, error: 'Código vacío' };
 
@@ -1527,8 +1546,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     if (found.stock <= 0) {
       sounds.playErrorBeep();
-      showToast(`⚠️ "${found.name}" está agotado (0 u. en stock)`, 'warning');
+      showToast(`⚠️ "${found.name}" está agotado (0 ${UNIT_TYPE_LABELS[found.unitType]} en stock)`, 'warning');
       return { success: false, product: found, error: 'Agotado' };
+    }
+
+    // Un producto que se vende por peso/volumen no se puede sumar a ciegas
+    // (1 kg de golpe por escanear el código sería un error caro) — hace
+    // falta pesarlo primero, así que esto se corta acá y es la pantalla la
+    // que decide qué hacer con `needsWeighing` (abrir el modal de pesaje en
+    // vez de sumar directo al carrito).
+    if (isFractionalUnit(found.unitType)) {
+      sounds.playScannerBeep();
+      return { success: true, product: found, needsWeighing: true };
     }
 
     addToCart(found);
@@ -1551,6 +1580,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return prev;
       }
       return prev.map((i) => (i.product.id === productId ? { ...i, quantity: newQty } : i));
+    });
+  };
+
+  /**
+   * Setea la cantidad directa (no suma/resta): lo usa el input numérico de
+   * la línea del carrito para productos fraccionarios (Kg/Gramo/Litro/ml),
+   * donde el cajero tipea "0.350" en vez de tocar +/- treinta y cinco veces.
+   */
+  const setCartItemQuantity = (productId: string, quantity: number) => {
+    setCart((prev) => {
+      const item = prev.find((i) => i.product.id === productId);
+      if (!item) return prev;
+
+      if (quantity <= 0) {
+        return prev.filter((i) => i.product.id !== productId);
+      }
+      if (quantity > item.product.stock) {
+        showToast(`Stock máximo alcanzado (${item.product.stock} ${UNIT_TYPE_LABELS[item.product.unitType]})`, 'warning');
+        return prev;
+      }
+      return prev.map((i) => (i.product.id === productId ? { ...i, quantity } : i));
     });
   };
 
@@ -1689,6 +1739,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         unitCost: item.product.costPrice,
         discount: itemDisc,
         total: totalItem,
+        unitType: item.product.unitType,
       };
     });
 
@@ -3015,6 +3066,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addToCart,
         scanBarcodeOrSku,
         updateCartQuantity,
+        setCartItemQuantity,
         removeFromCart,
         clearCart,
         taxPercent,

@@ -16,13 +16,15 @@ import {
   ScanLine,
   Barcode,
   Edit2,
+  Scale,
 } from 'lucide-react';
-import { ProductCategory, Product, Sale } from '../types';
+import { ProductCategory, Product, Sale, UNIT_TYPE_LABELS, isFractionalUnit } from '../types';
 import { ProductImage } from './ProductImage';
 import { PaymentModal } from './PaymentModal';
 import { ReceiptModal } from './ReceiptModal';
 import { ParkedOrdersModal } from './ParkedOrdersModal';
 import { CashShiftModal } from './CashShiftModal';
+import { WeighProductModal } from './WeighProductModal';
 import { formatARS } from '../utils/currency';
 
 export const POSView: React.FC = () => {
@@ -33,6 +35,7 @@ export const POSView: React.FC = () => {
     addToCart,
     scanBarcodeOrSku,
     updateCartQuantity,
+    setCartItemQuantity,
     removeFromCart,
     clearCart,
     taxPercent,
@@ -58,6 +61,7 @@ export const POSView: React.FC = () => {
   const [isParkedModalOpen, setIsParkedModalOpen] = useState<boolean>(false);
   const [isCashModalOpen, setIsCashModalOpen] = useState<boolean>(false);
   const [completedSale, setCompletedSale] = useState<Sale | null>(null);
+  const [weighingProduct, setWeighingProduct] = useState<Product | null>(null);
 
   // Discount modal / popover
   const [showDiscountModal, setShowDiscountModal] = useState<boolean>(false);
@@ -107,7 +111,8 @@ export const POSView: React.FC = () => {
       if (e.key === 'Enter') {
         if (barcodeBuffer.length >= 2) {
           e.preventDefault();
-          scanBarcodeOrSku(barcodeBuffer);
+          const res = scanBarcodeOrSku(barcodeBuffer);
+          if (res.needsWeighing && res.product) setWeighingProduct(res.product);
           barcodeBuffer = '';
         }
         return;
@@ -209,6 +214,7 @@ export const POSView: React.FC = () => {
                   e.preventDefault();
                   if (searchTerm.trim()) {
                     const res = scanBarcodeOrSku(searchTerm.trim());
+                    if (res.needsWeighing && res.product) setWeighingProduct(res.product);
                     if (res.success) {
                       setSearchTerm('');
                     }
@@ -245,7 +251,9 @@ export const POSView: React.FC = () => {
                   <button
                     key={product.id}
                     disabled={isOutOfStock}
-                    onClick={() => addToCart(product)}
+                    onClick={() =>
+                      isFractionalUnit(product.unitType) ? setWeighingProduct(product) : addToCart(product)
+                    }
                     className={`group bg-white rounded-2xl border transition-all text-left flex flex-col overflow-hidden shadow-xs relative ${
                       isOutOfStock
                         ? 'opacity-50 cursor-not-allowed border-slate-200 bg-slate-50'
@@ -262,12 +270,12 @@ export const POSView: React.FC = () => {
                       ) : isLowStock ? (
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-100 text-amber-800 border border-amber-200 shadow-xs">
                           <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
-                          {product.stock}
+                          {product.stock} {UNIT_TYPE_LABELS[product.unitType]}
                         </span>
                       ) : (
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-200 shadow-xs">
                           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                          {product.stock}
+                          {product.stock} {UNIT_TYPE_LABELS[product.unitType]}
                         </span>
                       )}
                     </div>
@@ -296,11 +304,14 @@ export const POSView: React.FC = () => {
                       <div className="mt-3 flex items-center justify-between">
                         <span className="text-base sm:text-lg font-black text-slate-900">
                           {formatARS(product.salePrice)}
+                          {isFractionalUnit(product.unitType) && (
+                            <span className="text-[10px] font-bold text-slate-400"> /{UNIT_TYPE_LABELS[product.unitType]}</span>
+                          )}
                         </span>
-                        
+
                         {!isOutOfStock && (
                           <span className="w-7 h-7 rounded-xl bg-slate-100 group-hover:bg-slate-900 group-hover:text-white flex items-center justify-center text-slate-600 transition-colors text-xs font-bold shadow-xs">
-                            +
+                            {isFractionalUnit(product.unitType) ? <Scale className="w-3.5 h-3.5" /> : '+'}
                           </span>
                         )}
                       </div>
@@ -374,34 +385,54 @@ export const POSView: React.FC = () => {
                       {item.product.name}
                     </h4>
                     <div className="text-[11px] text-slate-500 mt-0.5">
-                      {formatARS(item.product.salePrice)} / u
+                      {formatARS(item.product.salePrice)} / {UNIT_TYPE_LABELS[item.product.unitType]}
                     </div>
                   </div>
 
-                  {/* Qty +/- Controls */}
-                  <div className="flex items-center gap-1.5 bg-slate-100 rounded-xl p-1 shrink-0">
-                    <button
-                      onClick={() => updateCartQuantity(item.product.id, -1)}
-                      className="w-6 h-6 rounded-lg bg-white text-slate-700 hover:bg-slate-200 flex items-center justify-center text-xs font-bold shadow-xs transition-colors"
-                      title={item.quantity === 1 ? 'Eliminar del carrito' : 'Disminuir 1 unidad'}
-                    >
-                      {item.quantity === 1 ? (
-                        <Trash2 className="w-3 h-3 text-rose-500" />
-                      ) : (
-                        <Minus className="w-3 h-3" />
-                      )}
-                    </button>
-                    <span className="w-6 text-center text-xs font-bold text-slate-900 font-mono">
-                      {item.quantity}
-                    </span>
-                    <button
-                      onClick={() => updateCartQuantity(item.product.id, 1)}
-                      className="w-6 h-6 rounded-lg bg-white text-slate-700 hover:bg-slate-200 flex items-center justify-center text-xs font-bold shadow-xs transition-colors"
-                      title="Sumar 1 unidad"
-                    >
-                      <Plus className="w-3 h-3" />
-                    </button>
-                  </div>
+                  {isFractionalUnit(item.product.unitType) ? (
+                    /* Cantidad fraccionaria: se tipea directo (0.350 kg), no
+                       tiene sentido un stepper de a 1 en 1 para algo que se
+                       pesa. */
+                    <div className="flex items-center gap-1 shrink-0">
+                      <input
+                        type="number"
+                        inputMode="decimal"
+                        step="0.001"
+                        min="0"
+                        value={item.quantity}
+                        onChange={(e) => setCartItemQuantity(item.product.id, parseFloat(e.target.value) || 0)}
+                        className="w-16 px-1.5 py-1.5 bg-slate-100 rounded-lg text-xs font-bold text-slate-900 font-mono text-center focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                      <span className="text-[10px] text-slate-500 font-bold w-6">
+                        {UNIT_TYPE_LABELS[item.product.unitType]}
+                      </span>
+                    </div>
+                  ) : (
+                    /* Qty +/- Controls */
+                    <div className="flex items-center gap-1.5 bg-slate-100 rounded-xl p-1 shrink-0">
+                      <button
+                        onClick={() => updateCartQuantity(item.product.id, -1)}
+                        className="w-6 h-6 rounded-lg bg-white text-slate-700 hover:bg-slate-200 flex items-center justify-center text-xs font-bold shadow-xs transition-colors"
+                        title={item.quantity === 1 ? 'Eliminar del carrito' : 'Disminuir 1 unidad'}
+                      >
+                        {item.quantity === 1 ? (
+                          <Trash2 className="w-3 h-3 text-rose-500" />
+                        ) : (
+                          <Minus className="w-3 h-3" />
+                        )}
+                      </button>
+                      <span className="w-6 text-center text-xs font-bold text-slate-900 font-mono">
+                        {item.quantity}
+                      </span>
+                      <button
+                        onClick={() => updateCartQuantity(item.product.id, 1)}
+                        className="w-6 h-6 rounded-lg bg-white text-slate-700 hover:bg-slate-200 flex items-center justify-center text-xs font-bold shadow-xs transition-colors"
+                        title="Sumar 1 unidad"
+                      >
+                        <Plus className="w-3 h-3" />
+                      </button>
+                    </div>
+                  )}
 
                   {/* Line Total & Single Item Delete */}
                   <div className="flex items-center gap-2 shrink-0">
@@ -525,6 +556,15 @@ export const POSView: React.FC = () => {
       <CashShiftModal
         isOpen={isCashModalOpen}
         onClose={() => setIsCashModalOpen(false)}
+      />
+
+      <WeighProductModal
+        product={weighingProduct}
+        onConfirm={(quantity) => {
+          if (weighingProduct) addToCart(weighingProduct, quantity);
+          setWeighingProduct(null);
+        }}
+        onClose={() => setWeighingProduct(null)}
       />
 
       {/* Discount Selector Dialog */}

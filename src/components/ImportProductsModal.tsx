@@ -1,7 +1,7 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { parseCsv, parseFlexibleNumber, buildCsv, downloadCsv } from '../utils/csv';
-import { ProductImportRow } from '../types';
+import { ProductImportRow, ProductUnitType, UNIT_TYPE_LABELS } from '../types';
 import {
   X,
   Upload,
@@ -30,7 +30,8 @@ type FieldKey =
   | 'costPrice'
   | 'stock'
   | 'minStock'
-  | 'description';
+  | 'description'
+  | 'unitType';
 
 type FieldMapping = Record<FieldKey, string | null>;
 
@@ -50,8 +51,24 @@ const FIELD_CONFIGS: FieldConfig[] = [
   { key: 'costPrice', label: 'Precio de Costo', required: false, guesses: ['preciocosto', 'costo', 'compra'] },
   { key: 'stock', label: 'Stock', required: false, guesses: ['stock', 'cantidad', 'existencia'] },
   { key: 'minStock', label: 'Stock Mínimo', required: false, guesses: ['stockminimo', 'minimo'] },
+  { key: 'unitType', label: 'Se vende por (Unidad/Kg/Gramo/Litro/ml)', required: false, guesses: ['unidadmedida', 'unidadventa', 'tipounidad', 'unidad', 'medida'] },
   { key: 'description', label: 'Descripción', required: false, guesses: ['descripcion', 'detalle', 'observacion'] },
 ];
+
+// Sinónimos comunes → el valor exacto que guarda la base. Se compara contra
+// el texto de la CELDA (no del encabezado) ya normalizado, así que "Kg",
+// "KILOS" o "kilogramo" caen todos en el mismo lugar.
+const UNIT_TYPE_VALUE_MAP: Record<string, ProductUnitType> = {
+  kg: 'KG', kilo: 'KG', kilos: 'KG', kilogramo: 'KG', kilogramos: 'KG',
+  g: 'GRAMO', gr: 'GRAMO', grs: 'GRAMO', gramo: 'GRAMO', gramos: 'GRAMO',
+  l: 'LITRO', lt: 'LITRO', lts: 'LITRO', litro: 'LITRO', litros: 'LITRO',
+  ml: 'ML', mililitro: 'ML', mililitros: 'ML',
+  u: 'UNIDAD', un: 'UNIDAD', und: 'UNIDAD', unidad: 'UNIDAD', unidades: 'UNIDAD',
+};
+
+function parseUnitTypeValue(raw: string): ProductUnitType {
+  return UNIT_TYPE_VALUE_MAP[normalizeHeader(raw)] || 'UNIDAD';
+}
 
 function normalizeHeader(h: string): string {
   return h
@@ -139,6 +156,7 @@ function buildRows(
     const costPrice = parseFlexibleNumber(get(rawRow, mapping.costPrice)) ?? 0;
     const stock = parseFlexibleNumber(get(rawRow, mapping.stock)) ?? 0;
     const minStock = parseFlexibleNumber(get(rawRow, mapping.minStock)) ?? 5;
+    const unitType = mapping.unitType ? parseUnitTypeValue(get(rawRow, mapping.unitType)) : 'UNIDAD';
 
     valid.push({
       rowNumber,
@@ -151,6 +169,7 @@ function buildRows(
         costPrice,
         stock,
         minStock,
+        unitType,
         description: get(rawRow, mapping.description) || undefined,
       },
     });
@@ -221,8 +240,11 @@ export const ImportProductsModal: React.FC<ImportProductsModalProps> = ({ isOpen
 
   const handleDownloadTemplate = () => {
     const csv = buildCsv(
-      ['Nombre', 'SKU', 'Codigo de Barras', 'Categoria', 'Precio de Venta', 'Precio de Costo', 'Stock', 'Stock Minimo', 'Descripcion'],
-      [['Aceite de Oliva 500ml', 'ACE-001', '7791234567890', 'Almacén', 2500, 1500, 20, 5, '']]
+      ['Nombre', 'SKU', 'Codigo de Barras', 'Categoria', 'Precio de Venta', 'Precio de Costo', 'Stock', 'Stock Minimo', 'Unidad de Venta', 'Descripcion'],
+      [
+        ['Aceite de Oliva 500ml', 'ACE-001', '7791234567890', 'Almacén', 2500, 1500, 20, 5, 'Unidad', ''],
+        ['Almendras sueltas', 'ALM-001', '', 'Almacén', 4500, 3000, 5, 1, 'Kg', ''],
+      ]
     );
     downloadCsv('plantilla-productos.csv', csv);
   };
@@ -429,6 +451,7 @@ export const ImportProductsModal: React.FC<ImportProductsModalProps> = ({ isOpen
                         <th className="py-2 px-3">Categoría</th>
                         <th className="py-2 px-3 text-right">Precio Venta</th>
                         <th className="py-2 px-3 text-right">Stock</th>
+                        <th className="py-2 px-3">Unidad</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
@@ -439,6 +462,7 @@ export const ImportProductsModal: React.FC<ImportProductsModalProps> = ({ isOpen
                           <td className="py-2 px-3 text-slate-600">{r.data.category}</td>
                           <td className="py-2 px-3 text-right text-slate-800">${r.data.salePrice.toFixed(2)}</td>
                           <td className="py-2 px-3 text-right text-slate-600">{r.data.stock}</td>
+                          <td className="py-2 px-3 text-slate-600">{UNIT_TYPE_LABELS[r.data.unitType]}</td>
                         </tr>
                       ))}
                     </tbody>
