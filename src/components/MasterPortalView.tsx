@@ -3,8 +3,6 @@ import { useApp } from '../context/AppContext';
 import {
   Building2,
   Users,
-  TrendingUp,
-  Package,
   CircleDollarSign,
   ShieldCheck,
   Search,
@@ -38,14 +36,11 @@ import {
 } from 'lucide-react';
 import { UserAvatar } from './UserAvatar';
 import { StoreTenant, User, UserRole } from '../types';
-import { formatARS } from '../utils/currency';
 
 export const MasterPortalView: React.FC = () => {
   const {
     currentUser,
     users,
-    products,
-    sales,
     expenses,
     cashMovements,
     storeInfo,
@@ -132,13 +127,10 @@ export const MasterPortalView: React.FC = () => {
   });
 
   // Global KPIs Aggregation
-  const totalRevenue = useMemo(() => {
-    return (sales || [])
-      .filter((s) => s && s.status === 'COMPLETADA')
-      .reduce((sum, s) => sum + (s.total || 0), 0);
-  }, [sales]);
-
   const totalStoresCount = storeTenants.length;
+  const activeStoresCount = storeTenants.filter((s) => s.status === 'ACTIVO').length;
+  const trialStoresCount = storeTenants.filter((s) => s.status === 'EN_PRUEBA').length;
+  const suspendedStoresCount = storeTenants.filter((s) => s.status === 'SUSPENDIDO').length;
   const totalOwnersCount = (users || []).filter((u) => u && u.role === 'DUEÑO').length;
   const totalCashiersCount = (users || []).filter((u) => u && u.role === 'CAJERO').length;
 
@@ -429,14 +421,23 @@ export const MasterPortalView: React.FC = () => {
       </div>
 
       <div className="max-w-7xl mx-auto w-full p-4 sm:p-8 space-y-8 flex-1">
-        {/* Global Overview KPI Cards */}
+        {/* Global Overview KPI Cards.
+            Antes acá había 3 tarjetas de "Facturación/Catálogo/Dueños &
+            Empleados (tu comercio)" — números reales, pero del propio
+            comercio detrás de esta terminal (Rioja), mostrados sin haber
+            elegido auditar a nadie. Facturación/catálogo por comercio
+            requieren un reporte cross-tenant que todavía no existe (mismo
+            motivo por el que cada tarjeta de negocio, más abajo, dice
+            "Reportes por comercio: próximamente" en vez de un número
+            inventado) — así que el resumen general usa sólo el directorio
+            de negocios, que sí es dato legítimo de la plataforma. */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs flex items-center gap-4">
             <div className="w-12 h-12 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold shrink-0 border border-blue-100">
               <Building2 className="w-6 h-6" />
             </div>
             <div>
-              <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">Negocios Activos</div>
+              <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">Total de Negocios</div>
               <div className="text-2xl font-black text-slate-900 mt-0.5">{totalStoresCount}</div>
               <div className="text-[11px] text-blue-600 font-semibold mt-0.5">Clientes en el sistema</div>
             </div>
@@ -444,34 +445,34 @@ export const MasterPortalView: React.FC = () => {
 
           <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs flex items-center gap-4">
             <div className="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold shrink-0 border border-emerald-100">
-              <TrendingUp className="w-6 h-6" />
+              <CheckCircle2 className="w-6 h-6" />
             </div>
             <div>
-              <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">Facturación (tu comercio)</div>
-              <div className="text-2xl font-black text-slate-900 mt-0.5">{formatARS(totalRevenue)}</div>
-              <div className="text-[11px] text-emerald-600 font-semibold mt-0.5">{sales.length} ventas procesadas</div>
-            </div>
-          </div>
-
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center font-bold shrink-0 border border-purple-100">
-              <Package className="w-6 h-6" />
-            </div>
-            <div>
-              <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">Catálogo (tu comercio)</div>
-              <div className="text-2xl font-black text-slate-900 mt-0.5">{products.length}</div>
-              <div className="text-[11px] text-purple-600 font-semibold mt-0.5">Artículos administrados</div>
+              <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">Activos</div>
+              <div className="text-2xl font-black text-slate-900 mt-0.5">{activeStoresCount}</div>
+              <div className="text-[11px] text-emerald-600 font-semibold mt-0.5">Al día, operando</div>
             </div>
           </div>
 
           <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs flex items-center gap-4">
             <div className="w-12 h-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold shrink-0 border border-amber-100">
-              <Users className="w-6 h-6" />
+              <Sparkles className="w-6 h-6" />
             </div>
             <div>
-              <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">Dueños & Empleados (tu comercio)</div>
-              <div className="text-2xl font-black text-slate-900 mt-0.5">{users.length}</div>
-              <div className="text-[11px] text-amber-700 font-semibold mt-0.5">{totalOwnersCount} dueños • {totalCashiersCount} cajeros</div>
+              <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">En Prueba</div>
+              <div className="text-2xl font-black text-slate-900 mt-0.5">{trialStoresCount}</div>
+              <div className="text-[11px] text-amber-700 font-semibold mt-0.5">Evaluando el sistema</div>
+            </div>
+          </div>
+
+          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs flex items-center gap-4">
+            <div className="w-12 h-12 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center font-bold shrink-0 border border-rose-100">
+              <AlertTriangle className="w-6 h-6" />
+            </div>
+            <div>
+              <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">Suspendidos</div>
+              <div className="text-2xl font-black text-slate-900 mt-0.5">{suspendedStoresCount}</div>
+              <div className="text-[11px] text-rose-600 font-semibold mt-0.5">Sin acceso actualmente</div>
             </div>
           </div>
         </div>
@@ -693,7 +694,14 @@ export const MasterPortalView: React.FC = () => {
                         <Edit className="w-4 h-4" />
                       </button>
 
-                      {filteredStores.length > 1 && (
+                      {/* Antes chequeaba filteredStores.length > 1: con el
+                          buscador filtrando a un solo resultado (que es
+                          exactamente cómo se busca el negocio que uno
+                          quiere borrar), el botón desaparecía para ese
+                          único resultado aunque hubiera más negocios en
+                          total. La regla real es "no dejar sin negocios a
+                          la plataforma", así que cuenta sobre el total. */}
+                      {storeTenants.length > 1 && (
                         <button
                           onClick={() => handleDeleteStore(store)}
                           className="p-2 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-xl transition-colors"
