@@ -20,10 +20,12 @@ import {
   ShieldAlert,
   Edit3,
   Check,
+  Upload,
 } from 'lucide-react';
 import { Product, ProductCategory } from '../types';
 import { ProductImage } from './ProductImage';
 import { ProductImageSelector } from './ProductImageSelector';
+import { ImportProductsModal } from './ImportProductsModal';
 
 export const InventoryView: React.FC = () => {
   const {
@@ -59,6 +61,7 @@ export const InventoryView: React.FC = () => {
 
   // Modals state
   const [isAddModalOpen, setIsAddModalOpen] = useState<boolean>(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState<boolean>(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState<boolean>(false);
   const [isAdjustModalOpen, setIsAdjustModalOpen] = useState<boolean>(false);
   const [isReceiptModalOpen, setIsReceiptModalOpen] = useState<boolean>(false);
@@ -295,6 +298,17 @@ export const InventoryView: React.FC = () => {
             <History className="w-4 h-4 text-slate-500" />
             <span>Auditoría de Stock</span>
           </button>
+
+          {canManage && (
+            <button
+              onClick={() => setIsImportModalOpen(true)}
+              className="flex items-center gap-2 px-3.5 py-2.5 bg-white border border-slate-200 hover:bg-slate-50 text-xs font-bold text-slate-700 rounded-xl shadow-xs transition-colors"
+              title="Cargar muchos productos de una vez desde un archivo CSV"
+            >
+              <Upload className="w-4 h-4 text-blue-600" />
+              <span>Importar</span>
+            </button>
+          )}
 
           {canManage && (
             <button
@@ -1280,6 +1294,8 @@ export const InventoryView: React.FC = () => {
           </div>
         </div>
       )}
+
+      <ImportProductsModal isOpen={isImportModalOpen} onClose={() => setIsImportModalOpen(false)} />
     </div>
   );
 };

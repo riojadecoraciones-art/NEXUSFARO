@@ -15,6 +15,7 @@ import {
   StoreOperationalSnapshot,
   EmployeeAuthProof,
   UserRole,
+  ProductImportRow,
 } from '../types';
 
 // ==========================================
@@ -384,6 +385,28 @@ export const categoryService = {
       throw error;
     }
   },
+
+  /**
+   * Da de alta las categorías que todavía no existan, sin tocar las que ya
+   * están (ignoreDuplicates). Pensado para la importación masiva: un
+   * archivo de 12.000 productos puede traer categorías nuevas mezcladas
+   * con las de siempre, y acá no hace falta saber cuáles son cuáles.
+   */
+  async ensureExist(names: string[]): Promise<void> {
+    const unique = Array.from(new Set(names.map((n) => n.trim()).filter(Boolean)));
+    if (unique.length === 0) return;
+
+    const { error } = await supabase
+      .from('categories')
+      .upsert(
+        unique.map((name) => ({ name })),
+        { onConflict: 'store_id,name', ignoreDuplicates: true }
+      );
+
+    if (error) {
+      console.error('Error ensuring categories exist:', error);
+    }
+  },
 };
 
 // ==========================================
@@ -474,6 +497,63 @@ export const productService = {
       console.error('Error deleting product:', error);
       throw error;
     }
+  },
+
+  /**
+   * Alta/actualización masiva para la importación de catálogos grandes
+   * (miles de productos). Manda de a tandas en vez de un producto por
+   * request (inviable para 12.000 filas), y usa upsert por SKU: si el
+   * archivo trae un SKU que ya existe en este comercio, actualiza ese
+   * producto en vez de fallar por la restricción de SKU único — así sirve
+   * también para reimportar una lista de precios actualizada más adelante,
+   * no sólo la carga inicial.
+   *
+   * Deduplica por SKU antes de mandar cada tanda (se queda con la última
+   * aparición): Postgres rechaza un ON CONFLICT DO UPDATE que afecte la
+   * misma fila dos veces dentro del mismo statement.
+   */
+  async bulkUpsert(
+    rows: ProductImportRow[],
+    onProgress?: (done: number, total: number) => void
+  ): Promise<{ importedCount: number; failedChunks: { rows: ProductImportRow[]; message: string }[] }> {
+    const CHUNK_SIZE = 500;
+
+    const bySku = new Map<string, ProductImportRow>();
+    for (const row of rows) bySku.set(row.sku, row);
+    const deduped = Array.from(bySku.values());
+
+    let importedCount = 0;
+    const failedChunks: { rows: ProductImportRow[]; message: string }[] = [];
+
+    for (let i = 0; i < deduped.length; i += CHUNK_SIZE) {
+      const chunk = deduped.slice(i, i + CHUNK_SIZE);
+      const payload = chunk.map((r) => ({
+        name: r.name,
+        sku: r.sku,
+        barcode: r.barcode || null,
+        category: r.category || 'General',
+        sale_price: r.salePrice,
+        cost_price: r.costPrice,
+        stock: r.stock,
+        min_stock: r.minStock,
+        description: r.description || '',
+      }));
+
+      const { error } = await supabase
+        .from('products')
+        .upsert(payload, { onConflict: 'store_id,sku' });
+
+      if (error) {
+        console.error('Error importing product chunk:', error);
+        failedChunks.push({ rows: chunk, message: error.message });
+      } else {
+        importedCount += chunk.length;
+      }
+
+      onProgress?.(Math.min(i + CHUNK_SIZE, deduped.length), deduped.length);
+    }
+
+    return { importedCount, failedChunks };
   },
 };
 

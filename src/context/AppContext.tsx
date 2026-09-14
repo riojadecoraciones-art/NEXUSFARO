@@ -20,6 +20,8 @@ import {
   StoreTenant,
   UserRole,
   EmployeeAuthProof,
+  ProductImportRow,
+  ProductImportResult,
 } from '../types';
 import { SEED_USERS, SEED_PRODUCTS, SEED_SALES, SEED_ALERTS } from '../mockData';
 import { sounds } from '../utils/soundEffects';
@@ -115,6 +117,10 @@ interface AppContextType {
   addStockReceipt: (productId: string, quantityToAdd: number, reason: string) => Promise<void>;
   quickRestockProduct: (productId: string, quantityToAdd: number) => Promise<void>;
   addProduct: (productData: Omit<Product, 'id'>) => Promise<void>;
+  importProducts: (
+    rows: ProductImportRow[],
+    onProgress?: (done: number, total: number) => void
+  ) => Promise<ProductImportResult>;
   updateProduct: (id: string, productData: Partial<Product>) => Promise<void>;
   deleteProduct: (id: string) => Promise<boolean>;
   addCategory: (name: string) => Promise<boolean>;
@@ -2237,6 +2243,59 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  /**
+   * Carga masiva desde un archivo (CSV): las filas ya vienen mapeadas y
+   * validadas por ImportProductsModal, acá sólo se escriben. Se recarga
+   * todo products/categories desde Supabase al final en vez de mezclar a
+   * mano el resultado en el estado local — con miles de filas (algunas
+   * nuevas, otras actualizando productos existentes) es la única forma
+   * simple de garantizar que lo que se ve coincide con lo que quedó
+   * guardado.
+   */
+  const importProducts = async (
+    rows: ProductImportRow[],
+    onProgress?: (done: number, total: number) => void
+  ): Promise<ProductImportResult> => {
+    if (blockIfImpersonating()) return { importedCount: 0, failedRows: [] };
+    if (rows.length === 0) return { importedCount: 0, failedRows: [] };
+
+    try {
+      await categoryService.ensureExist(rows.map((r) => r.category));
+    } catch (e) {
+      console.error('Error ensuring categories exist before import:', e);
+    }
+
+    const { importedCount, failedChunks } = await productService.bulkUpsert(rows, onProgress);
+
+    try {
+      const [freshProducts, freshCategories] = await Promise.all([
+        productService.getAll(),
+        categoryService.getAll(),
+      ]);
+      setProducts(freshProducts);
+      setCategories(freshCategories);
+    } catch (e) {
+      console.error('Error refreshing products/categories after import:', e);
+    }
+
+    if (failedChunks.length === 0) {
+      showToast(`${importedCount} productos importados con éxito`, 'success');
+    } else {
+      showToast(
+        `${importedCount} productos importados, ${failedChunks.length} tanda(s) con error — revisá el detalle`,
+        'warning',
+        { isPersistent: true }
+      );
+    }
+
+    return {
+      importedCount,
+      failedRows: failedChunks.flatMap((chunk) =>
+        chunk.rows.map((row) => ({ rowNumber: 0, message: `${row.sku}: ${chunk.message}` }))
+      ),
+    };
+  };
+
   const updateProduct = async (id: string, productData: Partial<Product>) => {
     if (blockIfImpersonating()) return;
     try {
@@ -2929,6 +2988,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addStockReceipt,
         quickRestockProduct,
         addProduct,
+        importProducts,
         updateProduct,
         deleteProduct,
         addCategory,

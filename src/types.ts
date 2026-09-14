@@ -42,6 +42,30 @@ export interface Product {
   description?: string;
 }
 
+/** Una fila ya mapeada y validada, lista para mandar a bulkUpsert(). */
+export interface ProductImportRow {
+  name: string;
+  sku: string;
+  barcode?: string;
+  category: string;
+  salePrice: number;
+  costPrice: number;
+  stock: number;
+  minStock: number;
+  description?: string;
+}
+
+export interface ProductImportRowError {
+  /** Número de fila del archivo original (1 = primera fila de datos, sin contar el encabezado). */
+  rowNumber: number;
+  message: string;
+}
+
+export interface ProductImportResult {
+  importedCount: number;
+  failedRows: ProductImportRowError[];
+}
+
 export interface CartItem {
   product: Product;
   quantity: number;
