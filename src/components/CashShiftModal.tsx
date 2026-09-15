@@ -12,6 +12,7 @@ import {
   History,
   Calculator,
 } from 'lucide-react';
+import { formatARS } from '../utils/currency';
 
 interface CashShiftModalProps {
   isOpen: boolean;
@@ -267,10 +268,10 @@ export const CashShiftModal: React.FC<CashShiftModalProps> = ({ isOpen, onClose 
                     Efectivo Esperado en Gaveta
                   </span>
                   <div className="text-3xl font-black tracking-tight mt-1">
-                    ${activeShift.expectedCash.toFixed(2)}
+                    {formatARS(activeShift.expectedCash)}
                   </div>
                   <div className="text-[11px] text-slate-400 mt-1 font-mono">
-                    Fondo ($ {activeShift.initialCash.toFixed(2)}) + Ventas ($ {activeShift.cashSales.toFixed(2)}) + Entradas ($ {activeShift.totalIn.toFixed(2)}) - Retiros ($ {activeShift.totalOut.toFixed(2)})
+                    Fondo ({formatARS(activeShift.initialCash)}) + Ventas ({formatARS(activeShift.cashSales)}) + Entradas ({formatARS(activeShift.totalIn)}) - Retiros ({formatARS(activeShift.totalOut)})
                   </div>
                 </div>
 
@@ -287,22 +288,22 @@ export const CashShiftModal: React.FC<CashShiftModalProps> = ({ isOpen, onClose 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200">
                   <div className="text-[11px] text-slate-500 font-semibold">Fondo Inicial</div>
-                  <div className="text-lg font-bold text-slate-800">${activeShift.initialCash.toFixed(2)}</div>
+                  <div className="text-lg font-bold text-slate-800">{formatARS(activeShift.initialCash)}</div>
                 </div>
 
                 <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200">
                   <div className="text-[11px] text-slate-500 font-semibold">Ventas Efectivo</div>
-                  <div className="text-lg font-bold text-emerald-700">+${activeShift.cashSales.toFixed(2)}</div>
+                  <div className="text-lg font-bold text-emerald-700">+{formatARS(activeShift.cashSales)}</div>
                 </div>
 
                 <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200">
                   <div className="text-[11px] text-slate-500 font-semibold">Ventas Tarjeta</div>
-                  <div className="text-lg font-bold text-blue-700">${activeShift.cardSales.toFixed(2)}</div>
+                  <div className="text-lg font-bold text-blue-700">{formatARS(activeShift.cardSales)}</div>
                 </div>
 
                 <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200">
                   <div className="text-[11px] text-slate-500 font-semibold">Ventas QR/Transf.</div>
-                  <div className="text-lg font-bold text-purple-700">${activeShift.transferSales.toFixed(2)}</div>
+                  <div className="text-lg font-bold text-purple-700">{formatARS(activeShift.transferSales)}</div>
                 </div>
               </div>
 
@@ -311,12 +312,12 @@ export const CashShiftModal: React.FC<CashShiftModalProps> = ({ isOpen, onClose 
                 <div className="flex items-center gap-6">
                   <div>
                     <span className="text-[11px] text-slate-500 font-semibold block">Entradas / Ingresos</span>
-                    <span className="text-sm font-bold text-emerald-700">+${activeShift.totalIn.toFixed(2)}</span>
+                    <span className="text-sm font-bold text-emerald-700">+{formatARS(activeShift.totalIn)}</span>
                   </div>
                   <div className="h-8 w-px bg-slate-200" />
                   <div>
                     <span className="text-[11px] text-slate-500 font-semibold block">Retiros / Gastos</span>
-                    <span className="text-sm font-bold text-rose-700">-${activeShift.totalOut.toFixed(2)}</span>
+                    <span className="text-sm font-bold text-rose-700">-{formatARS(activeShift.totalOut)}</span>
                   </div>
                 </div>
 
@@ -415,10 +416,10 @@ export const CashShiftModal: React.FC<CashShiftModalProps> = ({ isOpen, onClose 
               <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 flex items-center justify-between">
                 <div>
                   <span className="text-xs font-semibold text-slate-500 block">Efectivo Teórico Esperado:</span>
-                  <span className="text-2xl font-black text-slate-900">${activeShift.expectedCash.toFixed(2)}</span>
+                  <span className="text-2xl font-black text-slate-900">{formatARS(activeShift.expectedCash)}</span>
                 </div>
                 <div className="text-right text-xs text-slate-500">
-                  <div>Ventas Totales: <strong>${(activeShift.cashSales + activeShift.cardSales + activeShift.transferSales).toFixed(2)}</strong></div>
+                  <div>Ventas Totales: <strong>{formatARS(activeShift.cashSales + activeShift.cardSales + activeShift.transferSales)}</strong></div>
                   <div>Apertura: {new Date(activeShift.openedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
                 </div>
               </div>
@@ -463,11 +464,11 @@ export const CashShiftModal: React.FC<CashShiftModalProps> = ({ isOpen, onClose 
                         {Math.abs(difference) < 0.01
                           ? 'Arqueo Perfecto (Sin diferencias)'
                           : difference > 0
-                          ? `Sobrante de Caja: +$${difference.toFixed(2)}`
-                          : `Faltante de Caja: -$${Math.abs(difference).toFixed(2)}`}
+                          ? `Sobrante de Caja: +${formatARS(difference)}`
+                          : `Faltante de Caja: -${formatARS(Math.abs(difference))}`}
                       </div>
                       <div className="text-[11px] opacity-80">
-                        Esperado: ${expectedNum.toFixed(2)} | Contado: ${countedNum.toFixed(2)}
+                        Esperado: {formatARS(expectedNum)} | Contado: {formatARS(countedNum)}
                       </div>
                     </div>
                   </div>
@@ -527,8 +528,8 @@ export const CashShiftModal: React.FC<CashShiftModalProps> = ({ isOpen, onClose 
                     </div>
 
                     <div className="grid grid-cols-3 gap-2 text-[11px] text-slate-600 pt-1 border-t border-slate-200/80">
-                      <div>Esperado: <strong>${shift.expectedCash.toFixed(2)}</strong></div>
-                      <div>Contado: <strong>${(shift.countedCash || 0).toFixed(2)}</strong></div>
+                      <div>Esperado: <strong>{formatARS(shift.expectedCash)}</strong></div>
+                      <div>Contado: <strong>{formatARS(shift.countedCash || 0)}</strong></div>
                       <div>
                         Diferencia:{' '}
                         <strong
@@ -541,7 +542,7 @@ export const CashShiftModal: React.FC<CashShiftModalProps> = ({ isOpen, onClose 
                           }
                         >
                           {(shift.difference || 0) >= 0 ? '+' : ''}
-                          ${(shift.difference || 0).toFixed(2)}
+                          {formatARS(shift.difference || 0)}
                         </strong>
                       </div>
                     </div>

@@ -28,6 +28,7 @@ import {
 import { SEED_USERS, SEED_PRODUCTS, SEED_SALES, SEED_ALERTS } from '../mockData';
 import { sounds } from '../utils/soundEffects';
 import { isHashed, verifySecret } from '../utils/crypto';
+import { formatARS } from '../utils/currency';
 import { supabase } from '../lib/supabase';
 import {
   userService,
@@ -131,6 +132,9 @@ interface AppContextType {
   lowStockProducts: Product[];
 
   // POS & Cart
+  /** Buscador del catálogo en el POS — compartido entre el buscador de arriba (Navbar) y la grilla de productos, para que sean el mismo campo. */
+  posSearchTerm: string;
+  setPosSearchTerm: (term: string) => void;
   cart: CartItem[];
   addToCart: (product: Product, quantity?: number) => void;
   scanBarcodeOrSku: (code: string) => { success: boolean; product?: Product; error?: string; needsWeighing?: boolean };
@@ -306,6 +310,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [cashMovements, setCashMovements] = useState<CashMovement[]>([]);
 
   // 5. Cart & Parked
+  const [posSearchTerm, setPosSearchTerm] = useState<string>('');
   const [cart, setCart] = useState<CartItem[]>([]);
   const [taxPercent, setTaxPercentState] = useState<number>(() => {
     try {
@@ -1335,7 +1340,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setActiveShift(newShift);
     }
 
-    showToast(`Caja abierta con fondo inicial de $${Number(initialCash).toFixed(2)}`, 'success');
+    showToast(`Caja abierta con fondo inicial de ${formatARS(Number(initialCash))}`, 'success');
     return true;
   };
 
@@ -1384,7 +1389,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setCashMovements((prev) => [movement, ...prev]);
     setActiveShift((prev) => (prev ? { ...prev, totalIn: newIn, totalOut: newOut, expectedCash: newExpected } : null));
 
-    showToast(`${type === 'ENTRADA' ? 'Ingreso' : 'Retiro'} de $${amount.toFixed(2)} registrado`, 'info');
+    showToast(`${type === 'ENTRADA' ? 'Ingreso' : 'Retiro'} de ${formatARS(amount)} registrado`, 'info');
     return true;
   };
 
@@ -1430,7 +1435,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         id: `alt-${Date.now()}`,
         type: 'CAJA_DIFERENCIA',
         title: `Caja cerrada con ${isShortage ? 'faltante' : 'sobrante'}`,
-        message: `Turno de ${closedShift.cashierName}: diferencia de ${isShortage ? '-' : '+'}$${Math.abs(diff).toFixed(2)} (Esperado: $${expected.toFixed(2)}, Contado: $${Number(countedCash).toFixed(2)})`,
+        message: `Turno de ${closedShift.cashierName}: diferencia de ${isShortage ? '-' : '+'}${formatARS(Math.abs(diff))} (Esperado: ${formatARS(expected)}, Contado: ${formatARS(Number(countedCash))})`,
         timestamp: 'Recién',
         read: false,
         actionRoute: 'cash_register',
@@ -1447,7 +1452,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setAlerts((prev) => [diffAlert, ...prev]);
     }
 
-    showToast(`Caja cerrada exitosamente. Diferencia: ${diff >= 0 ? '+' : ''}$${diff.toFixed(2)}`, 'success');
+    showToast(`Caja cerrada exitosamente. Diferencia: ${diff >= 0 ? '+' : ''}${formatARS(diff)}`, 'success');
     return true;
   };
 
@@ -1562,7 +1567,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     addToCart(found);
     sounds.playScannerBeep();
-    showToast(`✓ ${found.name} agregado al carrito ($${found.salePrice.toFixed(2)})`, 'success');
+    showToast(`✓ ${found.name} agregado al carrito (${formatARS(found.salePrice)})`, 'success');
     return { success: true, product: found };
   }, [products, addToCart, showToast]);
 
@@ -1943,12 +1948,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
     });
 
-    setSales((prev) => [newSale, ...prev]);
+    // Agregado optimista: normalmente llega antes que la suscripción en
+    // tiempo real, pero si el evento de Supabase Realtime para este INSERT
+    // se adelanta (ya trajo la venta con un getAll() completo), hay que
+    // evitar agregarla una segunda vez — mismo id porque sale.id se manda
+    // tal cual a la base (ver saleService.create), no lo genera Postgres.
+    setSales((prev) => (prev.some((s) => s.id === newSale.id) ? prev : [newSale, ...prev]));
 
     // 5. Clear cart & feedback
     clearCart();
     sounds.playSaleSuccessSound();
-    showToast(`Venta ${ticketNumber} registrada ($${cartTotal.toFixed(2)})`, 'success');
+    showToast(`Venta ${ticketNumber} registrada (${formatARS(cartTotal)})`, 'success');
 
     return newSale;
   };
@@ -2234,7 +2244,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const unitLabel = UNIT_TYPE_LABELS[prod.unitType];
     showToast(
       hasNewCost
-        ? `Se agregaron +${quantityToAdd} ${unitLabel} a "${prod.name}" — costo actualizado a $${unitCost!.toFixed(2)}`
+        ? `Se agregaron +${quantityToAdd} ${unitLabel} a "${prod.name}" — costo actualizado a ${formatARS(unitCost!)}`
         : `Se agregaron +${quantityToAdd} ${unitLabel} a "${prod.name}"`,
       'success'
     );
@@ -3081,6 +3091,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         deleteCategory,
         lowStockProducts,
 
+        posSearchTerm,
+        setPosSearchTerm,
         cart,
         addToCart,
         scanBarcodeOrSku,

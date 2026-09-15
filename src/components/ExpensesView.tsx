@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
+import { formatARS } from '../utils/currency';
 import {
   ReceiptText,
   Plus,
@@ -518,7 +519,7 @@ export const ExpensesView: React.FC = () => {
                           Importe
                         </span>
                         <div className="text-xl font-black text-slate-900 font-mono">
-                          ${exp.amount.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                          {formatARS(exp.amount)}
                         </div>
                       </div>
                       <span className="px-2 py-0.5 bg-white border border-slate-200 rounded-md text-[10px] font-bold text-slate-600">
@@ -791,7 +792,7 @@ export const ExpensesView: React.FC = () => {
                 <div className="flex justify-between items-center text-xs">
                   <span className="text-slate-500 font-medium">Monto a abonar:</span>
                   <span className="font-mono font-black text-slate-900 text-base">
-                    ${expenseToPay.amount.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                    {formatARS(expenseToPay.amount)}
                   </span>
                 </div>
                 {expenseToPay.beneficiary && (
@@ -848,7 +849,7 @@ export const ExpensesView: React.FC = () => {
                       Descontar dinero de la Caja Abierta actual
                     </span>
                     <span className="text-[11px] text-amber-700 block mt-0.5">
-                      Se creará automáticamente un retiro de caja por ${paymentAmount.toFixed(2)}.
+                      Se creará automáticamente un retiro de caja por {formatARS(paymentAmount)}.
                     </span>
                   </div>
                 </label>

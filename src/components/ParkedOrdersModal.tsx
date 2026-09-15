@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { Clock, Play, Trash2, X, Plus, AlertCircle, ShoppingBag } from 'lucide-react';
+import { formatARS } from '../utils/currency';
 
 interface ParkedOrdersModalProps {
   isOpen: boolean;
@@ -117,7 +118,7 @@ export const ParkedOrdersModal: React.FC<ParkedOrdersModalProps> = ({ isOpen, on
                           </span>
                         </div>
                         <div className="text-xs text-slate-500 mt-0.5">
-                          Total: <strong className="text-slate-800">${ticketTotal.toFixed(2)}</strong> • Cajero: {ticket.cashierName}
+                          Total: <strong className="text-slate-800">{formatARS(ticketTotal)}</strong> • Cajero: {ticket.cashierName}
                         </div>
                         {ticket.notes && (
                           <div className="text-[11px] text-amber-700 mt-1 font-medium italic">

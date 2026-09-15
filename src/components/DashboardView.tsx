@@ -258,9 +258,9 @@ export const DashboardView: React.FC = () => {
           </div>
 
           <div className="flex items-center justify-between text-xs text-slate-400 pt-2 border-t border-slate-100">
-            <span>$0</span>
-            <span>${(maxHourlyAmount / 2).toFixed(0)}</span>
-            <span>${maxHourlyAmount.toFixed(0)}</span>
+            <span>{formatARS(0)}</span>
+            <span>{formatARS(maxHourlyAmount / 2)}</span>
+            <span>{formatARS(maxHourlyAmount)}</span>
           </div>
         </div>
 

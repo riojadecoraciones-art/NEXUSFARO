@@ -16,6 +16,7 @@ import {
   User as UserIcon,
 } from 'lucide-react';
 import { Sale, UNIT_TYPE_LABELS } from '../types';
+import { formatARS } from '../utils/currency';
 
 export const HistoryView: React.FC = () => {
   const { sales, refundSale, currentUser, showToast } = useApp();
@@ -172,7 +173,7 @@ export const HistoryView: React.FC = () => {
 
                       {/* Total */}
                       <td className="py-3 px-4 font-mono font-black text-sm text-slate-900">
-                        ${sale.total.toFixed(2)}
+                        {formatARS(sale.total)}
                       </td>
 
                       {/* Status */}
@@ -261,10 +262,10 @@ export const HistoryView: React.FC = () => {
                       <div>
                         <span className="font-bold text-slate-900">{it.productName}</span>
                         <span className="text-slate-400 font-mono ml-1.5">
-                          ({it.quantity} {UNIT_TYPE_LABELS[it.unitType]} x ${it.unitPrice.toFixed(2)})
+                          ({it.quantity} {UNIT_TYPE_LABELS[it.unitType]} x {formatARS(it.unitPrice)})
                         </span>
                       </div>
-                      <span className="font-mono font-bold text-slate-900">${it.total.toFixed(2)}</span>
+                      <span className="font-mono font-bold text-slate-900">{formatARS(it.total)}</span>
                     </div>
                   ))}
                 </div>
@@ -274,21 +275,21 @@ export const HistoryView: React.FC = () => {
               <div className="space-y-1 pt-2 border-t border-slate-200">
                 <div className="flex justify-between text-slate-600">
                   <span>Subtotal:</span>
-                  <span>${selectedSale.subtotal.toFixed(2)}</span>
+                  <span>{formatARS(selectedSale.subtotal)}</span>
                 </div>
                 {selectedSale.discountTotal > 0 && (
                   <div className="flex justify-between text-emerald-700 font-bold">
                     <span>Descuento aplicado:</span>
-                    <span>-${selectedSale.discountTotal.toFixed(2)}</span>
+                    <span>-{formatARS(selectedSale.discountTotal)}</span>
                   </div>
                 )}
                 <div className="flex justify-between text-slate-600">
                   <span>Impuestos (IVA 21%):</span>
-                  <span>${selectedSale.tax.toFixed(2)}</span>
+                  <span>{formatARS(selectedSale.tax)}</span>
                 </div>
                 <div className="flex justify-between text-base font-black text-slate-900 pt-1 border-t border-slate-200">
                   <span>TOTAL COBRADO:</span>
-                  <span>${selectedSale.total.toFixed(2)}</span>
+                  <span>{formatARS(selectedSale.total)}</span>
                 </div>
               </div>
 
@@ -324,7 +325,7 @@ export const HistoryView: React.FC = () => {
             </div>
 
             <p className="text-xs text-slate-600 leading-relaxed mb-4">
-              ¿Estás seguro de anular la venta <strong className="text-slate-900">{selectedSale.ticketNumber}</strong> por un total de <strong className="text-slate-900">${selectedSale.total.toFixed(2)}</strong>?
+              ¿Estás seguro de anular la venta <strong className="text-slate-900">{selectedSale.ticketNumber}</strong> por un total de <strong className="text-slate-900">{formatARS(selectedSale.total)}</strong>?
               <br /><br />
               <span className="text-emerald-700 font-semibold">✓ El stock de los productos vendidos será reintegrado automáticamente al inventario.</span>
             </p>

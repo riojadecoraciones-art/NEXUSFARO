@@ -9,11 +9,9 @@ import {
   Clock,
   AlertTriangle,
   Lock,
-  Search,
   Check,
   Tag,
   CreditCard,
-  ScanLine,
   Barcode,
   Edit2,
   Scale,
@@ -31,6 +29,8 @@ export const POSView: React.FC = () => {
   const {
     products,
     categories: appCategories,
+    posSearchTerm,
+    setPosSearchTerm,
     cart,
     addToCart,
     scanBarcodeOrSku,
@@ -53,8 +53,7 @@ export const POSView: React.FC = () => {
   } = useApp();
 
   const [selectedCategory, setSelectedCategory] = useState<string>('Todo');
-  const [searchTerm, setSearchTerm] = useState<string>('');
-  
+
   // Modals state
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState<boolean>(false);
   const [isReceiptModalOpen, setIsReceiptModalOpen] = useState<boolean>(false);
@@ -86,8 +85,6 @@ export const POSView: React.FC = () => {
     setIsTaxModalOpen(false);
     showToast(`Tasa de IVA configurada al ${val}%`, 'success');
   };
-
-  const searchInputRef = useRef<HTMLInputElement>(null);
 
   // Global hardware barcode scanner listener (USB HID Keyboard Emulation)
   useEffect(() => {
@@ -139,9 +136,9 @@ export const POSView: React.FC = () => {
   const filteredProducts = products.filter((product) => {
     const matchesCategory = selectedCategory === 'Todo' || product.category === selectedCategory;
     const matchesSearch =
-      product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      product.sku.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (product.barcode && product.barcode.includes(searchTerm));
+      product.name.toLowerCase().includes(posSearchTerm.toLowerCase()) ||
+      product.sku.toLowerCase().includes(posSearchTerm.toLowerCase()) ||
+      (product.barcode && product.barcode.includes(posSearchTerm));
     return matchesCategory && matchesSearch;
   });
 
@@ -166,10 +163,7 @@ export const POSView: React.FC = () => {
 
   const handleNewSale = () => {
     clearCart();
-    setSearchTerm('');
-    if (searchInputRef.current) {
-      searchInputRef.current.focus();
-    }
+    setPosSearchTerm('');
   };
 
   return (
@@ -178,9 +172,9 @@ export const POSView: React.FC = () => {
       {/* LEFT / CENTER: Products Catalog */}
       <div className="flex-1 min-h-0 flex flex-col h-full overflow-hidden border-r border-slate-200">
         
-        {/* Category Pills Bar & Local Search */}
+        {/* Category Pills Bar */}
         <div className="p-4 bg-white border-b border-slate-200 flex flex-col sm:flex-row gap-3 items-center justify-between shadow-xs shrink-0">
-          
+
           {/* Scrollable Categories Bar */}
           <div className="flex items-center gap-2 overflow-x-auto w-full pb-1 sm:pb-0 scrollbar-none">
             {categories.map((cat) => {
@@ -199,37 +193,6 @@ export const POSView: React.FC = () => {
                 </button>
               );
             })}
-          </div>
-
-          {/* Quick inline search with USB scanner autofocus & enter support */}
-          <div className="relative w-full sm:w-72 shrink-0">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-            <input
-              ref={searchInputRef}
-              type="text"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  if (searchTerm.trim()) {
-                    const res = scanBarcodeOrSku(searchTerm.trim());
-                    if (res.needsWeighing && res.product) setWeighingProduct(res.product);
-                    if (res.success) {
-                      setSearchTerm('');
-                    }
-                  }
-                }
-              }}
-              placeholder="Buscar en catálogo o disparar láser..."
-              className="w-full pl-9 pr-20 py-2 bg-slate-100/90 focus:bg-white text-xs border border-transparent focus:border-blue-400 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/10 font-medium"
-            />
-            <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1 pointer-events-none">
-              <span className="inline-flex items-center gap-0.5 text-[9px] font-bold text-emerald-700 bg-emerald-100/80 px-1.5 py-0.5 rounded-md">
-                <ScanLine className="w-2.5 h-2.5 text-emerald-600" />
-                Láser
-              </span>
-            </div>
           </div>
         </div>
 
@@ -690,21 +653,21 @@ export const POSView: React.FC = () => {
               <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 text-xs space-y-1.5">
                 <div className="flex justify-between text-slate-500">
                   <span>Subtotal neto:</span>
-                  <span className="font-semibold text-slate-800">${(cartSubtotal - cartDiscountAmount).toFixed(2)}</span>
+                  <span className="font-semibold text-slate-800">{formatARS(cartSubtotal - cartDiscountAmount)}</span>
                 </div>
                 <div className="flex justify-between text-blue-700 font-semibold">
                   <span>IVA estimado ({taxInput || 0}%):</span>
                   <span>
-                    ${(((cartSubtotal - cartDiscountAmount) * (parseFloat(taxInput) || 0)) / 100).toFixed(2)}
+                    {formatARS(((cartSubtotal - cartDiscountAmount) * (parseFloat(taxInput) || 0)) / 100)}
                   </span>
                 </div>
                 <div className="pt-1.5 border-t border-slate-200 flex justify-between font-extrabold text-slate-900">
                   <span>Total con IVA:</span>
                   <span>
-                    ${(
+                    {formatARS(
                       (cartSubtotal - cartDiscountAmount) +
                       ((cartSubtotal - cartDiscountAmount) * (parseFloat(taxInput) || 0)) / 100
-                    ).toFixed(2)}
+                    )}
                   </span>
                 </div>
               </div>

@@ -59,6 +59,8 @@ const MainLayout: React.FC = () => {
     isStoreSuspended,
     isImpersonating,
     exitImpersonation,
+    posSearchTerm,
+    setPosSearchTerm,
   } = useApp();
   const [isCashModalOpen, setIsCashModalOpen] = useState<boolean>(false);
 
@@ -170,7 +172,11 @@ const MainLayout: React.FC = () => {
         )}
 
         {/* Top Header Navbar */}
-        <Navbar onOpenCashModal={() => setIsCashModalOpen(true)} />
+        <Navbar
+          onOpenCashModal={() => setIsCashModalOpen(true)}
+          searchTerm={posSearchTerm}
+          onSearchChange={setPosSearchTerm}
+        />
 
         {/* Dynamic View Router */}
         <main className="flex-1 flex overflow-hidden relative min-h-0">

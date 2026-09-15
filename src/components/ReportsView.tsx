@@ -9,6 +9,7 @@ import {
   isTimestampInRange,
 } from '../utils/dateRange';
 import { buildCsv, downloadCsv } from '../utils/csv';
+import { formatARS } from '../utils/currency';
 import { PaymentMethodType } from '../types';
 import {
   BarChart3,
@@ -229,7 +230,7 @@ export const ReportsView: React.FC = () => {
               </div>
               <div className="text-right">
                 <div className="font-mono font-bold text-sm text-slate-900">
-                  ${methodStats.EFECTIVO.total.toFixed(2)}
+                  {formatARS(methodStats.EFECTIVO.total)}
                 </div>
                 <div className="text-[10px] text-slate-400">
                   {totalRevenue > 0 ? ((methodStats.EFECTIVO.total / totalRevenue) * 100).toFixed(0) : 0}% del total
@@ -250,7 +251,7 @@ export const ReportsView: React.FC = () => {
               </div>
               <div className="text-right">
                 <div className="font-mono font-bold text-sm text-slate-900">
-                  ${methodStats.TARJETA.total.toFixed(2)}
+                  {formatARS(methodStats.TARJETA.total)}
                 </div>
                 <div className="text-[10px] text-slate-400">
                   {totalRevenue > 0 ? ((methodStats.TARJETA.total / totalRevenue) * 100).toFixed(0) : 0}% del total
@@ -271,7 +272,7 @@ export const ReportsView: React.FC = () => {
               </div>
               <div className="text-right">
                 <div className="font-mono font-bold text-sm text-slate-900">
-                  ${methodStats.TRANSFERENCIA_QR.total.toFixed(2)}
+                  {formatARS(methodStats.TRANSFERENCIA_QR.total)}
                 </div>
                 <div className="text-[10px] text-slate-400">
                   {totalRevenue > 0 ? ((methodStats.TRANSFERENCIA_QR.total / totalRevenue) * 100).toFixed(0) : 0}% del total
@@ -299,13 +300,13 @@ export const ReportsView: React.FC = () => {
                   <div>
                     <div className="font-bold text-xs text-slate-900">{c.name}</div>
                     <div className="text-[11px] text-slate-500 mt-0.5">
-                      {c.count} tickets emitidos • Ticket prom: <strong>${(c.total / (c.count || 1)).toFixed(2)}</strong>
+                      {c.count} tickets emitidos • Ticket prom: <strong>{formatARS(c.total / (c.count || 1))}</strong>
                     </div>
                   </div>
 
                   <div className="text-right">
                     <div className="font-mono font-black text-sm text-slate-900">
-                      ${c.total.toFixed(2)}
+                      {formatARS(c.total)}
                     </div>
                     <div className="text-[10px] text-emerald-700 font-bold">
                       {totalRevenue > 0 ? ((c.total / totalRevenue) * 100).toFixed(0) : 0}% de las ventas

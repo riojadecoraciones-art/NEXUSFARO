@@ -3,6 +3,7 @@ import confetti from 'canvas-confetti';
 import { Printer, Mail, PlusCircle, CheckCircle, X, RefreshCw, Send } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { Sale, UNIT_TYPE_LABELS } from '../types';
+import { formatARS } from '../utils/currency';
 
 interface ReceiptModalProps {
   sale: Sale | null;
@@ -121,8 +122,8 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
                   <span className="col-span-2 text-center">
                     {item.quantity} {UNIT_TYPE_LABELS[item.unitType]}
                   </span>
-                  <span className="col-span-2 text-right">${item.unitPrice.toFixed(2)}</span>
-                  <span className="col-span-2 text-right font-bold">${item.total.toFixed(2)}</span>
+                  <span className="col-span-2 text-right">{formatARS(item.unitPrice)}</span>
+                  <span className="col-span-2 text-right font-bold">{formatARS(item.total)}</span>
                 </div>
               ))}
             </div>
@@ -132,13 +133,13 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
           <div className="pt-3 border-t border-dashed border-slate-300 space-y-1 text-xs">
             <div className="flex justify-between text-slate-600">
               <span>Subtotal:</span>
-              <span>${sale.subtotal.toFixed(2)}</span>
+              <span>{formatARS(sale.subtotal)}</span>
             </div>
 
             {sale.discountTotal > 0 && (
               <div className="flex justify-between text-emerald-700 font-semibold">
                 <span>Descuento aplicado:</span>
-                <span>-${sale.discountTotal.toFixed(2)}</span>
+                <span>-{formatARS(sale.discountTotal)}</span>
               </div>
             )}
 
@@ -146,12 +147,12 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
               <span>
                 IVA {sale.subtotal > 0 && sale.tax > 0 ? `(${((sale.tax / Math.max(0.01, sale.subtotal - sale.discountTotal)) * 100).toFixed(1).replace('.0', '')}%)` : '(0%)'}:
               </span>
-              <span>${sale.tax.toFixed(2)}</span>
+              <span>{formatARS(sale.tax)}</span>
             </div>
 
             <div className="flex justify-between text-base font-extrabold text-slate-900 pt-2 border-t border-slate-300">
               <span>TOTAL:</span>
-              <span>${sale.total.toFixed(2)}</span>
+              <span>{formatARS(sale.total)}</span>
             </div>
           </div>
 
@@ -166,11 +167,11 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
               <>
                 <div className="flex justify-between">
                   <span>Monto Recibido:</span>
-                  <span>${sale.amountReceived.toFixed(2)}</span>
+                  <span>{formatARS(sale.amountReceived)}</span>
                 </div>
                 <div className="flex justify-between font-bold text-emerald-800">
                   <span>Vuelto / Cambio:</span>
-                  <span>${(sale.changeGiven || 0).toFixed(2)}</span>
+                  <span>{formatARS(sale.changeGiven || 0)}</span>
                 </div>
               </>
             )}

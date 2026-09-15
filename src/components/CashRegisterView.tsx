@@ -18,6 +18,7 @@ import {
   FileText,
 } from 'lucide-react';
 import { CashShiftModal } from './CashShiftModal';
+import { formatARS } from '../utils/currency';
 
 export const CashRegisterView: React.FC = () => {
   const {
@@ -127,12 +128,12 @@ export const CashRegisterView: React.FC = () => {
             </div>
             <h2 className="text-2xl font-black mt-1">
               {isOpen
-                ? `$${activeShift.expectedCash.toFixed(2)} en Efectivo Esperado`
+                ? `${formatARS(activeShift.expectedCash)} en Efectivo Esperado`
                 : 'No hay turno activo en esta terminal'}
             </h2>
             <p className="text-xs text-slate-300 mt-0.5">
               {isOpen
-                ? `Apertura inicial: $${activeShift.initialCash.toFixed(2)} • Ventas en efectivo: $${activeShift.cashSales.toFixed(2)}`
+                ? `Apertura inicial: ${formatARS(activeShift.initialCash)} • Ventas en efectivo: ${formatARS(activeShift.cashSales)}`
                 : 'Abrí la caja para habilitar transacciones en efectivo y tarjetas en el POS.'}
             </p>
           </div>
@@ -154,7 +155,7 @@ export const CashRegisterView: React.FC = () => {
           <div className="p-5 bg-white rounded-2xl border border-slate-200 shadow-xs">
             <div className="text-xs font-bold text-slate-400 uppercase">Fondo Inicial</div>
             <div className="text-2xl font-black text-slate-900 mt-2">
-              ${activeShift.initialCash.toFixed(2)}
+              {formatARS(activeShift.initialCash)}
             </div>
             <div className="text-[11px] text-slate-500 mt-1">Monto base declarado al abrir</div>
           </div>
@@ -162,7 +163,7 @@ export const CashRegisterView: React.FC = () => {
           <div className="p-5 bg-white rounded-2xl border border-slate-200 shadow-xs">
             <div className="text-xs font-bold text-slate-400 uppercase">Ventas por Tarjeta / QR</div>
             <div className="text-2xl font-black text-slate-900 mt-2">
-              ${(activeShift.cardSales + activeShift.transferSales).toFixed(2)}
+              {formatARS(activeShift.cardSales + activeShift.transferSales)}
             </div>
             <div className="text-[11px] text-slate-500 mt-1">Ingresos bancarios directos</div>
           </div>
@@ -170,9 +171,9 @@ export const CashRegisterView: React.FC = () => {
           <div className="p-5 bg-white rounded-2xl border border-slate-200 shadow-xs">
             <div className="text-xs font-bold text-slate-400 uppercase">Movimientos Manuales</div>
             <div className="text-2xl font-black text-slate-900 mt-2 flex items-center gap-2">
-              <span className="text-emerald-600 text-lg">+{activeShift.totalIn.toFixed(2)}</span>
+              <span className="text-emerald-600 text-lg">+{formatARS(activeShift.totalIn)}</span>
               <span className="text-slate-300 font-light">/</span>
-              <span className="text-rose-600 text-lg">-{activeShift.totalOut.toFixed(2)}</span>
+              <span className="text-rose-600 text-lg">-{formatARS(activeShift.totalOut)}</span>
             </div>
             <div className="text-[11px] text-slate-500 mt-1">Entradas y retiros de caja chica</div>
           </div>
@@ -298,23 +299,23 @@ export const CashRegisterView: React.FC = () => {
                         </div>
                       </td>
                       <td className="py-3 px-3 font-mono font-medium text-slate-600">
-                        ${shift.expectedCash.toFixed(2)}
+                        {formatARS(shift.expectedCash)}
                       </td>
                       <td className="py-3 px-3 font-mono font-bold text-slate-900">
-                        ${(shift.countedCash ?? shift.expectedCash).toFixed(2)}
+                        {formatARS(shift.countedCash ?? shift.expectedCash)}
                       </td>
                       <td className="py-3 px-3 text-right font-mono font-black">
                         {(shift.difference ?? 0) === 0 ? (
                           <span className="text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full text-[10px]">
-                            Exacto ($0.00)
+                            Exacto ({formatARS(0)})
                           </span>
                         ) : (shift.difference ?? 0) < 0 ? (
                           <span className="text-rose-600 bg-rose-50 px-2 py-0.5 rounded-full text-[10px]">
-                            ${(shift.difference ?? 0).toFixed(2)}
+                            {formatARS(shift.difference ?? 0)}
                           </span>
                         ) : (
                           <span className="text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full text-[10px]">
-                            +${(shift.difference ?? 0).toFixed(2)}
+                            +{formatARS(shift.difference ?? 0)}
                           </span>
                         )}
                       </td>

@@ -1,6 +1,7 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { parseCsv, parseFlexibleNumber, buildCsv, downloadCsv } from '../utils/csv';
+import { formatARS } from '../utils/currency';
 import { ProductImportRow, ProductUnitType, UNIT_TYPE_LABELS } from '../types';
 import {
   X,
@@ -460,7 +461,7 @@ export const ImportProductsModal: React.FC<ImportProductsModalProps> = ({ isOpen
                           <td className="py-2 px-3 font-semibold text-slate-800 max-w-[180px] truncate">{r.data.name}</td>
                           <td className="py-2 px-3 font-mono text-slate-600">{r.data.sku}</td>
                           <td className="py-2 px-3 text-slate-600">{r.data.category}</td>
-                          <td className="py-2 px-3 text-right text-slate-800">${r.data.salePrice.toFixed(2)}</td>
+                          <td className="py-2 px-3 text-right text-slate-800">{formatARS(r.data.salePrice)}</td>
                           <td className="py-2 px-3 text-right text-slate-600">{r.data.stock}</td>
                           <td className="py-2 px-3 text-slate-600">{UNIT_TYPE_LABELS[r.data.unitType]}</td>
                         </tr>

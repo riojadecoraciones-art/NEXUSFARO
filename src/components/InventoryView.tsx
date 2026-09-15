@@ -23,6 +23,7 @@ import {
   Upload,
 } from 'lucide-react';
 import { Product, ProductCategory, ProductUnitType, UNIT_TYPE_LABELS, isFractionalUnit } from '../types';
+import { formatARS } from '../utils/currency';
 import { ProductImage } from './ProductImage';
 import { ProductImageSelector } from './ProductImageSelector';
 import { ImportProductsModal } from './ImportProductsModal';
@@ -480,7 +481,7 @@ export const InventoryView: React.FC = () => {
                       {/* Sale Price */}
                       <td className="py-3 px-4 text-right">
                         <span className="font-bold text-slate-900 font-mono text-sm">
-                          ${prod.salePrice.toFixed(2)}
+                          {formatARS(prod.salePrice)}
                         </span>
                       </td>
 
@@ -488,7 +489,7 @@ export const InventoryView: React.FC = () => {
                       {isOwner && (
                         <td className="py-3 px-4 text-right">
                           <div className="font-medium text-slate-600 font-mono text-xs">
-                            ${prod.costPrice.toFixed(2)}
+                            {formatARS(prod.costPrice)}
                           </div>
                           <div className={`text-[10px] font-bold ${marginPercent >= 40 ? 'text-emerald-700' : 'text-slate-500'}`}>
                             {marginPercent}% margen
@@ -523,7 +524,7 @@ export const InventoryView: React.FC = () => {
                             title="Ingreso de mercadería (+ unidades)"
                           >
                             <Plus className="w-3.5 h-3.5 text-emerald-600" />
-                            <span className="hidden lg:inline">+ Mercadería</span>
+                            <span className="hidden lg:inline">Mercadería</span>
                           </button>
 
                           {/* Adjust stock button */}
@@ -1100,7 +1101,7 @@ export const InventoryView: React.FC = () => {
                   <div className="font-bold text-xs text-slate-900">{selectedProduct.name}</div>
                   <div className="text-[11px] text-slate-500">
                     Stock actual: <strong>{selectedProduct.stock} {UNIT_TYPE_LABELS[selectedProduct.unitType]}</strong>
-                    {' • '}Último costo: <strong>${selectedProduct.costPrice.toFixed(2)}</strong>
+                    {' • '}Último costo: <strong>{formatARS(selectedProduct.costPrice)}</strong>
                   </div>
                 </div>
               </div>
@@ -1362,7 +1363,7 @@ export const InventoryView: React.FC = () => {
                           {mov.reason} • Responsable: <strong>{mov.userName}</strong>
                           {mov.unitCost !== undefined && (
                             <>
-                              {' • '}Costo: <strong className="text-slate-700">${mov.unitCost.toFixed(2)}</strong>
+                              {' • '}Costo: <strong className="text-slate-700">{formatARS(mov.unitCost)}</strong>
                             </>
                           )}
                         </div>
