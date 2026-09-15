@@ -19,6 +19,7 @@ import {
   Crown,
   Briefcase,
   Sparkles,
+  Calendar,
 } from 'lucide-react';
 import { ActiveView } from '../types';
 import { UserAvatar } from './UserAvatar';
@@ -107,6 +108,12 @@ export const Sidebar: React.FC = () => {
       id: 'reports',
       label: 'Reportes',
       icon: BarChart3,
+      visible: isOwner,
+    },
+    {
+      id: 'content_calendar',
+      label: 'Calendario de Contenidos',
+      icon: Calendar,
       visible: isOwner,
     },
     {

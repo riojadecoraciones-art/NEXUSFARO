@@ -16,6 +16,7 @@ import {
   EmployeeAuthProof,
   UserRole,
   ProductImportRow,
+  ContentIdea,
 } from '../types';
 
 // ==========================================
@@ -147,6 +148,17 @@ function mapFixedExpenseRow(row: any): FixedExpense {
     lastPaidAmount: row.last_paid_amount !== null ? Number(row.last_paid_amount) : undefined,
     lastPaidMethod: row.last_paid_method || undefined,
     beneficiary: row.beneficiary || undefined,
+    notes: row.notes || undefined,
+    createdAt: row.created_at,
+  };
+}
+
+function mapContentIdeaRow(row: any): ContentIdea {
+  return {
+    id: row.id,
+    title: row.title,
+    type: row.type,
+    scheduledDate: row.scheduled_date || undefined,
     notes: row.notes || undefined,
     createdAt: row.created_at,
   };
@@ -945,6 +957,70 @@ export const fixedExpenseService = {
     const { error } = await supabase.from('fixed_expenses').delete().eq('id', id);
     if (error) {
       console.error('Error deleting fixed expense:', error);
+      throw error;
+    }
+  },
+};
+
+export const contentIdeaService = {
+  async getAll(): Promise<ContentIdea[]> {
+    const { data, error } = await supabase
+      .from('content_ideas')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching content ideas:', error);
+      throw error;
+    }
+
+    return (data || []).map(mapContentIdeaRow);
+  },
+
+  async create(idea: Omit<ContentIdea, 'id' | 'createdAt'> & { id?: string; createdAt?: string }): Promise<ContentIdea> {
+    const id = idea.id || `idea-${Date.now()}`;
+    const createdAt = idea.createdAt || new Date().toISOString();
+
+    const { data, error } = await supabase
+      .from('content_ideas')
+      .insert({
+        id,
+        title: idea.title,
+        type: idea.type,
+        scheduled_date: idea.scheduledDate || null,
+        notes: idea.notes || null,
+        created_at: createdAt,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error creating content idea:', error);
+      throw error;
+    }
+
+    return mapContentIdeaRow(data);
+  },
+
+  async update(id: string, updates: Partial<ContentIdea>): Promise<void> {
+    const dbUpdates: Record<string, any> = {};
+
+    if (updates.title !== undefined) dbUpdates.title = updates.title;
+    if (updates.type !== undefined) dbUpdates.type = updates.type;
+    if (updates.scheduledDate !== undefined) dbUpdates.scheduled_date = updates.scheduledDate || null;
+    if (updates.notes !== undefined) dbUpdates.notes = updates.notes;
+
+    const { error } = await supabase.from('content_ideas').update(dbUpdates).eq('id', id);
+    if (error) {
+      console.error('Error updating content idea:', error);
+      throw error;
+    }
+  },
+
+  async delete(id: string): Promise<void> {
+    const { error } = await supabase.from('content_ideas').delete().eq('id', id);
+    if (error) {
+      console.error('Error deleting content idea:', error);
       throw error;
     }
   },

@@ -15,6 +15,7 @@ import {
   PaymentMethodType,
   PaymentDetail,
   FixedExpense,
+  ContentIdea,
   StoreInfo,
   MasterAuthConfig,
   StoreTenant,
@@ -38,6 +39,7 @@ import {
   saleService,
   stockMovementService,
   fixedExpenseService,
+  contentIdeaService,
   parkedTicketService,
   appAlertService,
   storeSettingsService,
@@ -180,6 +182,12 @@ interface AppContextType {
   deleteExpense: (id: string) => Promise<boolean>;
   markExpenseAsPaid: (id: string, paymentMethod?: PaymentMethodType, amount?: number) => Promise<void>;
   markExpenseAsPending: (id: string) => Promise<void>;
+
+  // Calendario de Contenidos
+  contentIdeas: ContentIdea[];
+  addContentIdea: (ideaData: Omit<ContentIdea, 'id' | 'createdAt'>) => Promise<void>;
+  updateContentIdea: (id: string, updates: Partial<ContentIdea>) => Promise<void>;
+  deleteContentIdea: (id: string) => Promise<boolean>;
 
   // Sucursal & Datos del Negocio Personalizables
   storeInfo: StoreInfo;
@@ -336,6 +344,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // 6. Gastos Fijos & Operativos
   const [expenses, setExpenses] = useState<FixedExpense[]>([]);
+  const [contentIdeas, setContentIdeas] = useState<ContentIdea[]>([]);
 
   // 7. Store & Branch Information
   const [storeInfo, setStoreInfo] = useState<StoreInfo>({
@@ -623,6 +632,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       setExpenses(fetchedExpenses);
       setAlerts(fetchedAlerts);
+
+      // 6. Content Ideas (Calendario de Contenidos)
+      const fetchedContentIdeas = await contentIdeaService.getAll().catch((err) => {
+        console.warn('Error loading content ideas:', err);
+        return [];
+      });
+      setContentIdeas(fetchedContentIdeas);
+
       setIsSupabaseConnected(true);
     } catch (error) {
       console.error('Failed to load complete dataset from Supabase:', error);
@@ -892,6 +909,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             setCashMovements(freshMovements);
           } catch (e) {
             console.error('Realtime cash movements refresh error:', e);
+          }
+        }
+      )
+      // Calendario de Contenidos: si otra terminal agrega o programa una idea,
+      // se ve reflejado sin refrescar la página.
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'content_ideas' },
+        async () => {
+          if (isImpersonatingRef.current) return;
+          try {
+            const freshIdeas = await contentIdeaService.getAll();
+            setContentIdeas(freshIdeas);
+          } catch (e) {
+            console.error('Realtime content ideas refresh error:', e);
           }
         }
       )
@@ -2674,6 +2706,55 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // ==========================================
+  // CALENDARIO DE CONTENIDOS
+  // ==========================================
+
+  const addContentIdea = async (ideaData: Omit<ContentIdea, 'id' | 'createdAt'>) => {
+    if (blockIfImpersonating()) return;
+    try {
+      const created = await contentIdeaService.create(ideaData);
+      // Igual que en completeSale: la suscripción realtime de content_ideas
+      // ya puede haber traído esta misma fila con un refetch completo antes
+      // de que termine este await — evitar sumarla dos veces.
+      setContentIdeas((prev) => (prev.some((i) => i.id === created.id) ? prev : [created, ...prev]));
+      showToast(
+        created.scheduledDate ? `Idea "${created.title}" agregada al calendario` : `Idea "${created.title}" agregada al banco de ideas`,
+        'success'
+      );
+    } catch (e) {
+      console.error('Error adding content idea in Supabase:', e);
+      showToast('Error al guardar la idea en la base de datos', 'error');
+    }
+  };
+
+  const updateContentIdea = async (id: string, updates: Partial<ContentIdea>) => {
+    if (blockIfImpersonating()) return;
+    try {
+      await contentIdeaService.update(id, updates);
+    } catch (e) {
+      console.error('Error updating content idea in Supabase:', e);
+    }
+    setContentIdeas((prev) => prev.map((i) => (i.id === id ? { ...i, ...updates } : i)));
+    showToast('Idea actualizada correctamente', 'success');
+  };
+
+  const deleteContentIdea = async (id: string): Promise<boolean> => {
+    if (blockIfImpersonating()) return false;
+    const target = contentIdeas.find((i) => i.id === id);
+    if (!target) return false;
+
+    try {
+      await contentIdeaService.delete(id);
+    } catch (e) {
+      console.error('Error deleting content idea in Supabase:', e);
+    }
+
+    setContentIdeas((prev) => prev.filter((i) => i.id !== id));
+    showToast(`Idea "${target.title}" eliminada`, 'info');
+    return true;
+  };
+
+  // ==========================================
   // STORE INFO HANDLERS
   // ==========================================
 
@@ -2875,6 +2956,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setCashMovements(snapshot.cashMovements);
     setExpenses(snapshot.expenses);
     setAlerts(snapshot.alerts);
+    // El Calendario de Contenidos todavía no forma parte de get-store-snapshot
+    // — se vacía en vez de dejar puestas las ideas propias del operador
+    // (que quedarían mostradas, por error, como si fueran del comercio
+    // auditado). blockIfImpersonating ya impide escribir mientras tanto.
+    setContentIdeas([]);
 
     setIsImpersonating(true);
     setActiveViewRaw('dashboard');
@@ -3130,6 +3216,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         deleteExpense,
         markExpenseAsPaid,
         markExpenseAsPending,
+
+        contentIdeas,
+        addContentIdea,
+        updateContentIdea,
+        deleteContentIdea,
 
         storeInfo,
         updateStoreInfo,

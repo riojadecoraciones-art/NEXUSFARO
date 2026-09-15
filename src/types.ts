@@ -334,15 +334,35 @@ export interface StoreOperationalSnapshot {
   alerts: AppAlert[];
 }
 
-export type ActiveView = 
-  | 'dashboard' 
-  | 'pos' 
-  | 'inventory' 
-  | 'history' 
-  | 'reports' 
-  | 'employees' 
+export type ActiveView =
+  | 'dashboard'
+  | 'pos'
+  | 'inventory'
+  | 'history'
+  | 'reports'
+  | 'employees'
   | 'expenses'
   | 'settings'
   | 'cash_register'
-  | 'master_portal';
+  | 'master_portal'
+  | 'content_calendar';
+
+export type ContentIdeaType = 'PROMOCION' | 'PUBLICACION' | 'HISTORIA' | 'RECORDATORIO';
+
+export const CONTENT_IDEA_TYPE_LABELS: Record<ContentIdeaType, string> = {
+  PROMOCION: 'Promoción',
+  PUBLICACION: 'Publicación',
+  HISTORIA: 'Historia',
+  RECORDATORIO: 'Recordatorio',
+};
+
+export interface ContentIdea {
+  id: string;
+  title: string;
+  type: ContentIdeaType;
+  /** Sin fecha = todavía en el Banco de Ideas, no asignada al calendario. Formato YYYY-MM-DD. */
+  scheduledDate?: string;
+  notes?: string;
+  createdAt: string;
+}
 
