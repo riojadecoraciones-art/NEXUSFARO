@@ -61,6 +61,8 @@ interface AppContextType {
   // superadmin, que nunca se autobloquea por esto).
   isCheckingStoreStatus: boolean;
   isStoreSuspended: boolean;
+  /** Configurado por Llave Maestra para este comercio (vencimientos, talles) — ver StoreTenant. */
+  storeFeatures: { tracksExpiration: boolean; hasSizeVariants: boolean };
   signInTerminal: (email: string, password: string) => Promise<{ success: boolean; message: string }>;
   signOutTerminal: () => Promise<void>;
 
@@ -119,7 +121,13 @@ interface AppContextType {
   categories: string[];
   stockMovements: StockMovement[];
   adjustStock: (productId: string, newStock: number, reason: string, type?: 'AJUSTE_MERMA' | 'AJUSTE_CONTEO') => Promise<void>;
-  addStockReceipt: (productId: string, quantityToAdd: number, reason: string, unitCost?: number) => Promise<void>;
+  addStockReceipt: (
+    productId: string,
+    quantityToAdd: number,
+    reason: string,
+    unitCost?: number,
+    expirationDate?: string
+  ) => Promise<void>;
   quickRestockProduct: (productId: string, quantityToAdd: number) => Promise<void>;
   addProduct: (productData: Omit<Product, 'id'>) => Promise<void>;
   importProducts: (
@@ -132,6 +140,8 @@ interface AppContextType {
   updateCategory: (oldName: string, newName: string) => Promise<boolean>;
   deleteCategory: (name: string, fallbackCategory?: string) => Promise<boolean>;
   lowStockProducts: Product[];
+  /** Sólo productos de comercios con storeFeatures.tracksExpiration activo: vencidos o por vencer. */
+  expiringProducts: Product[];
 
   // POS & Cart
   /** Buscador del catálogo en el POS — compartido entre el buscador de arriba (Navbar) y la grilla de productos, para que sean el mismo campo. */
@@ -263,6 +273,10 @@ const IS_MASTER_ACCESS_CONFIGURED = isHashed(MASTER_PASSWORD_HASH);
 // bien en el archivo. "npm run hash-password" ya imprime la línea con los
 // "$" escapados para evitar esto; este mensaje distingue ese caso de
 // "nunca se configuró nada".
+// Ventana de aviso previo al vencimiento (días). Sólo aplica a comercios con
+// storeFeatures.tracksExpiration activo — ver expiringProducts.
+const EXPIRATION_WARNING_DAYS = 7;
+
 const MASTER_NOT_CONFIGURED_MESSAGE = MASTER_PASSWORD_HASH
   ? 'VITE_MASTER_PASSWORD_HASH está cargado pero no tiene el formato esperado. Esto pasa cuando los "$" del hash no quedaron escapados en .env.local: Vite los interpreta como referencias a otra variable y lo corta en silencio. Volvé a correr "npm run hash-password" y pegá la línea completa que imprime (ya sale con los "$" escapados).'
   : 'El acceso maestro no está configurado en esta instalación. Generá el hash con "npm run hash-password" y cargá VITE_MASTER_PASSWORD_HASH en .env.local.';
@@ -279,6 +293,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [terminalRole, setTerminalRole] = useState<string | null>(null);
   const [isCheckingStoreStatus, setIsCheckingStoreStatus] = useState<boolean>(true);
   const [isStoreSuspended, setIsStoreSuspended] = useState<boolean>(false);
+  const [storeFeatures, setStoreFeatures] = useState<{ tracksExpiration: boolean; hasSizeVariants: boolean }>({
+    tracksExpiration: false,
+    hasSizeVariants: false,
+  });
 
   // 1. Auth & Navigation
   const [users, setUsers] = useState<User[]>(SEED_USERS);
@@ -706,6 +724,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       .then((res) => {
         if (!activo) return;
         setIsStoreSuspended(res?.status === 'SUSPENDIDO');
+        setStoreFeatures({
+          tracksExpiration: res?.tracksExpiration || false,
+          hasSizeVariants: res?.hasSizeVariants || false,
+        });
       })
       .catch((e) => {
         console.error('No se pudo verificar el estado de pago del comercio:', e);
@@ -952,6 +974,69 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const lowStockProducts = useMemo(() => {
     return products.filter((p) => p.stock <= p.minStock);
   }, [products]);
+
+  // Derived: productos vencidos o por vencer (sólo en comercios con
+  // storeFeatures.tracksExpiration activo). Mismo molde que lowStockProducts
+  // — ninguno de los dos escanea la base, sólo lo que ya está en memoria.
+  const expiringProducts = useMemo(() => {
+    if (!storeFeatures.tracksExpiration) return [];
+    const warningMs = Date.now() + EXPIRATION_WARNING_DAYS * 24 * 60 * 60 * 1000;
+    return products.filter((p) => {
+      if (!p.expirationDate) return false;
+      const expMs = new Date(p.expirationDate).getTime();
+      return !isNaN(expMs) && expMs <= warningMs;
+    });
+  }, [products, storeFeatures.tracksExpiration]);
+
+  // A diferencia de las alertas de stock (disparadas por una venta o un
+  // ajuste puntual), nada "pasa" cuando un producto se vence: hace falta
+  // este efecto para detectarlo igual. Sólo persiste una alerta la primera
+  // vez que un producto entra en la ventana de aviso — de ahí en más
+  // depende de `alerts` (ver dismissAlert) para no repetirse en cada
+  // render. `alerts` queda afuera de las dependencias a propósito: leerlo
+  // desactualizado acá es intencional (evita relanzar este efecto cada vez
+  // que él mismo agrega una alerta) y no rompe nada porque este efecto sólo
+  // vuelve a correr cuando cambian los productos, momento en el que ya lee
+  // el `alerts` más fresco.
+  useEffect(() => {
+    if (expiringProducts.length === 0) return;
+    const now = Date.now();
+
+    const newAlerts: AppAlert[] = [];
+    expiringProducts.forEach((p) => {
+      const expMs = new Date(p.expirationDate!).getTime();
+      const isExpired = expMs < now;
+      const type: AppAlert['type'] = isExpired ? 'PRODUCTO_VENCIDO' : 'PRODUCTO_POR_VENCER';
+      if (alerts.some((a) => a.productId === p.id && a.type === type)) return;
+
+      const daysLeft = Math.ceil((expMs - now) / (24 * 60 * 60 * 1000));
+      newAlerts.push({
+        id: `alt-exp-${Date.now()}-${p.id}`,
+        type,
+        title: isExpired ? `Producto Vencido: ${p.name}` : `Por Vencer: ${p.name}`,
+        message: isExpired
+          ? `Venció el ${p.expirationDate} — revisá si todavía se puede vender.`
+          : `Vence el ${p.expirationDate} (en ${Math.max(0, daysLeft)} día${daysLeft === 1 ? '' : 's'}).`,
+        timestamp: 'Recién',
+        read: false,
+        actionRoute: 'inventory',
+        actionLabel: 'REVISAR',
+        productId: p.id,
+        productName: p.name,
+        productSku: p.sku,
+        productImage: p.imageUrl,
+        category: p.category,
+        severity: isExpired ? 'critical' : 'warning',
+      });
+    });
+
+    if (newAlerts.length === 0) return;
+    newAlerts.forEach((alert) => {
+      appAlertService.create(alert).catch((e) => console.error('Error saving expiration alert:', e));
+    });
+    setAlerts((prev) => [...newAlerts, ...prev]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [expiringProducts]);
 
   const canAccessView = (view: ActiveView): boolean => {
     if (!currentUser) return false;
@@ -2215,7 +2300,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     productId: string,
     quantityToAdd: number,
     reason: string,
-    unitCost?: number
+    unitCost?: number,
+    expirationDate?: string
   ) => {
     if (blockIfImpersonating()) return;
     if (!currentUser) return;
@@ -2229,10 +2315,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const previousStock = prod.stock;
     const newStock = previousStock + quantityToAdd;
-    // Sólo se actualiza el costo de referencia si viene un valor real y
-    // distinto de "vacío" — dejarlo en blanco significa "no sé/no cambió",
-    // no "pasó a costar $0".
+    // Sólo se actualiza el costo/vencimiento de referencia si viene un valor
+    // real y distinto de "vacío" — dejarlo en blanco significa "no sé/no
+    // cambió", no "pasó a costar $0" ni "dejó de vencer".
     const hasNewCost = typeof unitCost === 'number' && Number.isFinite(unitCost) && unitCost >= 0;
+    const hasNewExpiration = typeof expirationDate === 'string' && expirationDate.trim().length > 0;
 
     const movement: StockMovement = {
       id: `stk-rec-${Date.now()}`,
@@ -2248,11 +2335,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       unitCost: hasNewCost ? unitCost : undefined,
     };
 
+    const referenceUpdates: Partial<Product> = {};
+    if (hasNewCost) referenceUpdates.costPrice = unitCost;
+    if (hasNewExpiration) referenceUpdates.expirationDate = expirationDate;
+
     try {
       await Promise.all([
         productService.updateStock(productId, newStock),
         stockMovementService.create(movement),
-        hasNewCost ? productService.update(productId, { costPrice: unitCost }) : Promise.resolve(),
+        Object.keys(referenceUpdates).length > 0 ? productService.update(productId, referenceUpdates) : Promise.resolve(),
       ]);
     } catch (e) {
       console.error('Error adding stock receipt in Supabase:', e);
@@ -2260,7 +2351,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setProducts((prev) =>
       prev.map((p) =>
-        p.id === productId ? { ...p, stock: newStock, costPrice: hasNewCost ? unitCost : p.costPrice } : p
+        p.id === productId
+          ? {
+              ...p,
+              stock: newStock,
+              costPrice: hasNewCost ? unitCost! : p.costPrice,
+              expirationDate: hasNewExpiration ? expirationDate : p.expirationDate,
+            }
+          : p
       )
     );
 
@@ -2941,6 +3039,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       email: snapshot.storeInfo?.email || targetTenant.ownerEmail || '',
       receiptFooter: 'Comprobante no válido como factura',
     });
+    setStoreFeatures({
+      tracksExpiration: targetTenant.tracksExpiration,
+      hasSizeVariants: targetTenant.hasSizeVariants,
+    });
     setCategories(snapshot.categories);
     setProducts(snapshot.products);
     setSales(snapshot.sales);
@@ -2976,6 +3078,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setIsImpersonating(false);
     setActiveViewRaw('master_portal');
     await loadAllDataFromSupabase();
+    // loadAllDataFromSupabase no toca storeFeatures (eso lo maneja el efecto
+    // de "estado de pago", que no se vuelve a disparar acá) — sin este
+    // llamado, la config del comercio auditado se quedaría pisada encima de
+    // la propia del operador después de salir de la auditoría.
+    try {
+      const res = await storeTenantService.getOwnStoreStatus();
+      setStoreFeatures({
+        tracksExpiration: res?.tracksExpiration || false,
+        hasSizeVariants: res?.hasSizeVariants || false,
+      });
+    } catch (e) {
+      console.error('No se pudo restaurar la configuración propia del comercio:', e);
+    }
     showToast('Regresando al Portal Maestro', 'info');
   };
 
@@ -3119,6 +3234,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         terminalEmail,
         isCheckingStoreStatus,
         isStoreSuspended,
+        storeFeatures,
         signInTerminal,
         signOutTerminal,
         sendReceiptEmail,
@@ -3158,6 +3274,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateCategory,
         deleteCategory,
         lowStockProducts,
+        expiringProducts,
 
         posSearchTerm,
         setPosSearchTerm,

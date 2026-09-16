@@ -32,7 +32,8 @@ type FieldKey =
   | 'stock'
   | 'minStock'
   | 'description'
-  | 'unitType';
+  | 'unitType'
+  | 'expirationDate';
 
 type FieldMapping = Record<FieldKey, string | null>;
 
@@ -53,6 +54,7 @@ const FIELD_CONFIGS: FieldConfig[] = [
   { key: 'stock', label: 'Stock', required: false, guesses: ['stock', 'cantidad', 'existencia'] },
   { key: 'minStock', label: 'Stock Mínimo', required: false, guesses: ['stockminimo', 'minimo'] },
   { key: 'unitType', label: 'Se vende por (Unidad/Kg/Gramo/Litro/ml)', required: false, guesses: ['unidadmedida', 'unidadventa', 'tipounidad', 'unidad', 'medida'] },
+  { key: 'expirationDate', label: 'Fecha de Vencimiento', required: false, guesses: ['vencimiento', 'vence', 'caducidad', 'expiracion'] },
   { key: 'description', label: 'Descripción', required: false, guesses: ['descripcion', 'detalle', 'observacion'] },
 ];
 
@@ -69,6 +71,22 @@ const UNIT_TYPE_VALUE_MAP: Record<string, ProductUnitType> = {
 
 function parseUnitTypeValue(raw: string): ProductUnitType {
   return UNIT_TYPE_VALUE_MAP[normalizeHeader(raw)] || 'UNIDAD';
+}
+
+// Acepta ISO (2026-12-31, lo que ya produce un <input type="date">) o
+// DD/MM/AAAA (lo más común al exportar una planilla en Argentina). Cualquier
+// otra cosa se descarta en silencio: es un campo opcional, así que una fecha
+// rara en el archivo no tiene por qué frenar el resto de la fila.
+function parseFlexibleDate(raw: string): string | undefined {
+  const trimmed = raw.trim();
+  if (!trimmed) return undefined;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+  const dmy = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (dmy) {
+    const [, d, m, y] = dmy;
+    return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+  }
+  return undefined;
 }
 
 function normalizeHeader(h: string): string {
@@ -158,6 +176,7 @@ function buildRows(
     const stock = parseFlexibleNumber(get(rawRow, mapping.stock)) ?? 0;
     const minStock = parseFlexibleNumber(get(rawRow, mapping.minStock)) ?? 5;
     const unitType = mapping.unitType ? parseUnitTypeValue(get(rawRow, mapping.unitType)) : 'UNIDAD';
+    const expirationDate = mapping.expirationDate ? parseFlexibleDate(get(rawRow, mapping.expirationDate)) : undefined;
 
     valid.push({
       rowNumber,
@@ -171,6 +190,7 @@ function buildRows(
         stock,
         minStock,
         unitType,
+        expirationDate,
         description: get(rawRow, mapping.description) || undefined,
       },
     });
@@ -241,10 +261,10 @@ export const ImportProductsModal: React.FC<ImportProductsModalProps> = ({ isOpen
 
   const handleDownloadTemplate = () => {
     const csv = buildCsv(
-      ['Nombre', 'SKU', 'Codigo de Barras', 'Categoria', 'Precio de Venta', 'Precio de Costo', 'Stock', 'Stock Minimo', 'Unidad de Venta', 'Descripcion'],
+      ['Nombre', 'SKU', 'Codigo de Barras', 'Categoria', 'Precio de Venta', 'Precio de Costo', 'Stock', 'Stock Minimo', 'Unidad de Venta', 'Fecha de Vencimiento', 'Descripcion'],
       [
-        ['Aceite de Oliva 500ml', 'ACE-001', '7791234567890', 'Almacén', 2500, 1500, 20, 5, 'Unidad', ''],
-        ['Almendras sueltas', 'ALM-001', '', 'Almacén', 4500, 3000, 5, 1, 'Kg', ''],
+        ['Aceite de Oliva 500ml', 'ACE-001', '7791234567890', 'Almacén', 2500, 1500, 20, 5, 'Unidad', '', ''],
+        ['Almendras sueltas', 'ALM-001', '', 'Almacén', 4500, 3000, 5, 1, 'Kg', '2026-12-31', ''],
       ]
     );
     downloadCsv('plantilla-productos.csv', csv);

@@ -352,7 +352,11 @@ export const DashboardView: React.FC = () => {
                 >
                   <div className="flex items-start gap-3">
                     <div className="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-slate-700 shrink-0 mt-0.5">
-                      {alert.type.includes('STOCK') ? <Package className="w-4 h-4 text-amber-600" /> : <Banknote className="w-4 h-4 text-rose-600" />}
+                      {alert.type.includes('STOCK') || alert.type.includes('PRODUCTO') ? (
+                        <Package className="w-4 h-4 text-amber-600" />
+                      ) : (
+                        <Banknote className="w-4 h-4 text-rose-600" />
+                      )}
                     </div>
                     <div>
                       <div className="font-bold text-xs text-slate-900">{alert.title}</div>

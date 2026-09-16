@@ -36,6 +36,7 @@ export const InventoryView: React.FC = () => {
     addStockReceipt,
     quickRestockProduct,
     lowStockProducts,
+    storeFeatures,
     setIsNotificationsPanelOpen,
     addProduct,
     updateProduct,
@@ -78,6 +79,7 @@ export const InventoryView: React.FC = () => {
   const [receiptUnits, setReceiptUnits] = useState<string>('');
   const [receiptSupplier, setReceiptSupplier] = useState<string>('');
   const [receiptCost, setReceiptCost] = useState<string>('');
+  const [receiptExpirationDate, setReceiptExpirationDate] = useState<string>('');
 
   // New product form
   const [newProdName, setNewProdName] = useState<string>('');
@@ -144,6 +146,7 @@ export const InventoryView: React.FC = () => {
     setReceiptUnits('10');
     setReceiptSupplier('Proveedor Principal');
     setReceiptCost(prod.costPrice ? prod.costPrice.toString() : '');
+    setReceiptExpirationDate(prod.expirationDate || '');
     setIsReceiptModalOpen(true);
   };
 
@@ -190,7 +193,8 @@ export const InventoryView: React.FC = () => {
       selectedProduct.id,
       units,
       `Ingreso de mercadería (${receiptSupplier || 'Proveedor'})`,
-      costVal
+      costVal,
+      storeFeatures.tracksExpiration && receiptExpirationDate ? receiptExpirationDate : undefined
     );
     setIsReceiptModalOpen(false);
   };
@@ -414,6 +418,7 @@ export const InventoryView: React.FC = () => {
                 <th className="py-3.5 px-4 text-center">Stock Actual</th>
                 <th className="py-3.5 px-4 text-right">Precio Venta</th>
                 {isOwner && <th className="py-3.5 px-4 text-right">Costo / Margen</th>}
+                {storeFeatures.tracksExpiration && <th className="py-3.5 px-4 text-center">Vencimiento</th>}
                 <th className="py-3.5 px-4 text-center">Estado</th>
                 <th className="py-3.5 px-4 text-right">Acciones</th>
               </tr>
@@ -421,7 +426,10 @@ export const InventoryView: React.FC = () => {
             <tbody className="divide-y divide-slate-100 text-xs">
               {paginatedProducts.length === 0 ? (
                 <tr>
-                  <td colSpan={isOwner ? 7 : 6} className="py-12 text-center text-slate-400 font-medium">
+                  <td
+                    colSpan={(isOwner ? 7 : 6) + (storeFeatures.tracksExpiration ? 1 : 0)}
+                    className="py-12 text-center text-slate-400 font-medium"
+                  >
                     No se encontraron productos con los filtros seleccionados.
                   </td>
                 </tr>
@@ -431,6 +439,10 @@ export const InventoryView: React.FC = () => {
                   const isLowStock = prod.stock > 0 && prod.stock <= prod.minStock;
                   const marginPercent =
                     prod.salePrice > 0 ? Math.round(((prod.salePrice - prod.costPrice) / prod.salePrice) * 100) : 0;
+                  const expirationMs = prod.expirationDate ? new Date(prod.expirationDate).getTime() : null;
+                  const isExpired = expirationMs !== null && expirationMs < Date.now();
+                  const isExpiringSoon =
+                    expirationMs !== null && !isExpired && expirationMs - Date.now() <= 7 * 24 * 60 * 60 * 1000;
 
                   return (
                     <tr key={prod.id} className="hover:bg-slate-50/70 transition-colors">
@@ -494,6 +506,28 @@ export const InventoryView: React.FC = () => {
                           <div className={`text-[10px] font-bold ${marginPercent >= 40 ? 'text-emerald-700' : 'text-slate-500'}`}>
                             {marginPercent}% margen
                           </div>
+                        </td>
+                      )}
+
+                      {/* Vencimiento (sólo comercios con storeFeatures.tracksExpiration) */}
+                      {storeFeatures.tracksExpiration && (
+                        <td className="py-3 px-4 text-center">
+                          {prod.expirationDate ? (
+                            <span
+                              className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-extrabold border ${
+                                isExpired
+                                  ? 'bg-rose-100 text-rose-800 border-rose-200'
+                                  : isExpiringSoon
+                                  ? 'bg-amber-100 text-amber-900 border-amber-200'
+                                  : 'bg-slate-100 text-slate-600 border-slate-200'
+                              }`}
+                              title={isExpired ? 'Vencido' : isExpiringSoon ? 'Vence pronto' : 'Fecha de vencimiento'}
+                            >
+                              {prod.expirationDate}
+                            </span>
+                          ) : (
+                            <span className="text-slate-300 text-[11px]">—</span>
+                          )}
                         </td>
                       )}
 
@@ -1138,6 +1172,21 @@ export const InventoryView: React.FC = () => {
                   Si lo completás, queda como el costo de referencia del producto de ahora en más.
                 </p>
               </div>
+
+              {storeFeatures.tracksExpiration && (
+                <div>
+                  <label className="text-xs font-bold text-slate-700 block mb-1">Fecha de Vencimiento (opcional)</label>
+                  <input
+                    type="date"
+                    value={receiptExpirationDate}
+                    onChange={(e) => setReceiptExpirationDate(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-xl text-base font-bold text-slate-900 focus:outline-none focus:border-blue-500"
+                  />
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    Si lo completás, queda como la fecha de vencimiento de referencia del producto.
+                  </p>
+                </div>
+              )}
 
               <div>
                 <label className="text-xs font-semibold text-slate-700 block mb-1">Proveedor / Factura de Compra</label>

@@ -43,7 +43,13 @@ export const NotificationDrawer: React.FC = () => {
   const filteredAlerts = useMemo(() => {
     return alerts.filter((alert) => {
       // Tab filter
-      if (activeTab === 'stock' && alert.type !== 'STOCK_BAJO' && alert.type !== 'STOCK_AGOTADO') {
+      if (
+        activeTab === 'stock' &&
+        alert.type !== 'STOCK_BAJO' &&
+        alert.type !== 'STOCK_AGOTADO' &&
+        alert.type !== 'PRODUCTO_POR_VENCER' &&
+        alert.type !== 'PRODUCTO_VENCIDO'
+      ) {
         return false;
       }
       if (activeTab === 'cash' && alert.type !== 'CAJA_DIFERENCIA') {
@@ -67,7 +73,13 @@ export const NotificationDrawer: React.FC = () => {
   }, [alerts, activeTab, searchQuery]);
 
   const stockAlertsCount = useMemo(() => {
-    return alerts.filter((a) => a.type === 'STOCK_BAJO' || a.type === 'STOCK_AGOTADO').length;
+    return alerts.filter(
+      (a) =>
+        a.type === 'STOCK_BAJO' ||
+        a.type === 'STOCK_AGOTADO' ||
+        a.type === 'PRODUCTO_POR_VENCER' ||
+        a.type === 'PRODUCTO_VENCIDO'
+    ).length;
   }, [alerts]);
 
   const cashAlertsCount = useMemo(() => {
@@ -185,7 +197,7 @@ export const NotificationDrawer: React.FC = () => {
                 }`}
               >
                 <AlertTriangle className="w-3.5 h-3.5 text-rose-500" />
-                Stock Crítico ({stockAlertsCount})
+                Inventario ({stockAlertsCount})
               </button>
               <button
                 onClick={() => setActiveTab('cash')}
@@ -239,20 +251,22 @@ export const NotificationDrawer: React.FC = () => {
                 const isOutOfStock = alert.type === 'STOCK_AGOTADO' || alert.currentStock === 0;
                 const isLowStock = alert.type === 'STOCK_BAJO';
                 const isCashAlert = alert.type === 'CAJA_DIFERENCIA';
+                const isExpired = alert.type === 'PRODUCTO_VENCIDO';
+                const isExpiringSoon = alert.type === 'PRODUCTO_POR_VENCER';
 
                 let cardStyle = 'bg-white border-slate-200 text-slate-900';
                 let badgeStyle = 'bg-slate-100 text-slate-700 border-slate-200';
                 let iconWrapperStyle = 'bg-slate-100 text-slate-600 border-slate-200';
                 let IconComponent = Bell;
 
-                if (isOutOfStock) {
+                if (isOutOfStock || isExpired) {
                   cardStyle = alert.read
                     ? 'bg-white/80 border-rose-200/80 text-slate-800'
                     : 'bg-white border-rose-300 shadow-sm ring-1 ring-rose-100';
                   badgeStyle = 'bg-rose-100 text-rose-800 border-rose-200';
                   iconWrapperStyle = 'bg-rose-50 text-rose-600 border-rose-200';
                   IconComponent = AlertOctagon;
-                } else if (isLowStock) {
+                } else if (isLowStock || isExpiringSoon) {
                   cardStyle = alert.read
                     ? 'bg-white/80 border-amber-200/80 text-slate-800'
                     : 'bg-white border-amber-300 shadow-sm ring-1 ring-amber-100';
@@ -306,7 +320,15 @@ export const NotificationDrawer: React.FC = () => {
                         <div>
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold border ${badgeStyle}`}>
-                              {isOutOfStock ? 'AGOTADO' : isLowStock ? 'STOCK MÍNIMO' : 'ALERTA CAJA'}
+                              {isOutOfStock
+                                ? 'AGOTADO'
+                                : isLowStock
+                                ? 'STOCK MÍNIMO'
+                                : isExpired
+                                ? 'VENCIDO'
+                                : isExpiringSoon
+                                ? 'POR VENCER'
+                                : 'ALERTA CAJA'}
                             </span>
                             {alert.category && (
                               <span className="text-[11px] text-slate-500 font-semibold">{alert.category}</span>

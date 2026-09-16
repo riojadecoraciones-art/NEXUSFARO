@@ -43,6 +43,7 @@ function mapProductRow(row: any): Product {
     imageUrl: row.image_url || '',
     description: row.description || undefined,
     unitType: (row.unit_type as Product['unitType']) || 'UNIDAD',
+    expirationDate: row.expiration_date || undefined,
   };
 }
 
@@ -460,6 +461,7 @@ export const productService = {
         image_url: product.imageUrl || '',
         description: product.description || '',
         unit_type: product.unitType || 'UNIDAD',
+        expiration_date: product.expirationDate || null,
       })
       .select()
       .single();
@@ -488,6 +490,7 @@ export const productService = {
     if (updates.imageUrl !== undefined) dbUpdates.image_url = updates.imageUrl;
     if (updates.description !== undefined) dbUpdates.description = updates.description;
     if (updates.unitType !== undefined) dbUpdates.unit_type = updates.unitType;
+    if (updates.expirationDate !== undefined) dbUpdates.expiration_date = updates.expirationDate || null;
 
     const { error } = await supabase.from('products').update(dbUpdates).eq('id', id);
     if (error) {
@@ -555,6 +558,7 @@ export const productService = {
         min_stock: r.minStock,
         description: r.description || '',
         unit_type: r.unitType || 'UNIDAD',
+        expiration_date: r.expirationDate || null,
       }));
 
       const { error } = await supabase
@@ -1261,6 +1265,8 @@ export const storeTenantService = {
       createdAt: row.created_at,
       terminalEmail: row.terminal_email || undefined,
       paidUntil: row.paid_until || undefined,
+      tracksExpiration: Boolean(row.tracks_expiration),
+      hasSizeVariants: Boolean(row.has_size_variants),
     }));
   },
 
@@ -1279,6 +1285,8 @@ export const storeTenantService = {
         address: tenant.address || null,
         status: tenant.status || 'ACTIVO',
         paid_until: tenant.paidUntil || null,
+        tracks_expiration: tenant.tracksExpiration || false,
+        has_size_variants: tenant.hasSizeVariants || false,
       })
       .select()
       .single();
@@ -1301,6 +1309,8 @@ export const storeTenantService = {
       createdAt: data.created_at,
       terminalEmail: data.terminal_email || undefined,
       paidUntil: data.paid_until || undefined,
+      tracksExpiration: Boolean(data.tracks_expiration),
+      hasSizeVariants: Boolean(data.has_size_variants),
     };
   },
 
@@ -1318,6 +1328,8 @@ export const storeTenantService = {
     if (updates.address !== undefined) dbUpdates.address = updates.address;
     if (updates.status !== undefined) dbUpdates.status = updates.status;
     if (updates.paidUntil !== undefined) dbUpdates.paid_until = updates.paidUntil || null;
+    if (updates.tracksExpiration !== undefined) dbUpdates.tracks_expiration = updates.tracksExpiration;
+    if (updates.hasSizeVariants !== undefined) dbUpdates.has_size_variants = updates.hasSizeVariants;
 
     const { error } = await supabase.from('stores').update(dbUpdates).eq('id', id);
     if (error) {
@@ -1342,10 +1354,15 @@ export const storeTenantService = {
    * resultado a la única fila que le corresponde a la sesión que llama —
    * nunca ve el resto del directorio.
    */
-  async getOwnStoreStatus(): Promise<{ status: string; paidUntil: string | null } | null> {
+  async getOwnStoreStatus(): Promise<{
+    status: string;
+    paidUntil: string | null;
+    tracksExpiration: boolean;
+    hasSizeVariants: boolean;
+  } | null> {
     const { data, error } = await supabase
       .from('stores')
-      .select('status, paid_until')
+      .select('status, paid_until, tracks_expiration, has_size_variants')
       .maybeSingle();
 
     if (error) {
@@ -1354,7 +1371,12 @@ export const storeTenantService = {
     }
     if (!data) return null;
 
-    return { status: data.status || 'ACTIVO', paidUntil: data.paid_until || null };
+    return {
+      status: data.status || 'ACTIVO',
+      paidUntil: data.paid_until || null,
+      tracksExpiration: Boolean(data.tracks_expiration),
+      hasSizeVariants: Boolean(data.has_size_variants),
+    };
   },
 
   /**

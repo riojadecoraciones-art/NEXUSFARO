@@ -62,6 +62,8 @@ export interface Product {
   imageUrl: string;
   description?: string;
   unitType: ProductUnitType;
+  /** Sólo tiene sentido en comercios con StoreTenant.tracksExpiration activo. Formato YYYY-MM-DD. */
+  expirationDate?: string;
 }
 
 /** Una fila ya mapeada y validada, lista para mandar a bulkUpsert(). */
@@ -76,6 +78,7 @@ export interface ProductImportRow {
   minStock: number;
   description?: string;
   unitType: ProductUnitType;
+  expirationDate?: string;
 }
 
 export interface ProductImportRowError {
@@ -203,7 +206,7 @@ export interface StockMovement {
 
 export interface AppAlert {
   id: string;
-  type: 'STOCK_BAJO' | 'STOCK_AGOTADO' | 'CAJA_DIFERENCIA' | 'INFO';
+  type: 'STOCK_BAJO' | 'STOCK_AGOTADO' | 'CAJA_DIFERENCIA' | 'INFO' | 'PRODUCTO_POR_VENCER' | 'PRODUCTO_VENCIDO';
   title: string;
   message: string;
   timestamp: string;
@@ -311,6 +314,10 @@ export interface StoreTenant {
   terminalEmail?: string;
   /** Sólo informativo: hasta cuándo pagó. No dispara nada por sí solo — el bloqueo real es `status === 'SUSPENDIDO'`. */
   paidUntil?: string;
+  /** Configurado por Llave Maestra al crear/editar el negocio, según su rubro. */
+  tracksExpiration: boolean;
+  /** Guardable desde ya; todavía sin comportamiento propio (variantes por talle es un desarrollo aparte). */
+  hasSizeVariants: boolean;
 }
 
 /**
