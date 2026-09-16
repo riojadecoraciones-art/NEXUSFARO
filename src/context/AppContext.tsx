@@ -243,9 +243,6 @@ interface AppContextType {
   ) => void;
   showStockAlertToast: (product: Product, currentStock: number) => void;
   removeToast: (id: string) => void;
-
-  // Reset
-  resetToSeedData: () => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -3112,21 +3109,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return { fixedIssues, details };
   };
 
-  const resetToSeedData = () => {
-    setProducts(SEED_PRODUCTS);
-    setSales(SEED_SALES);
-    setUsers(SEED_USERS);
-    setActiveShift(null);
-    setCashMovements([]);
-    setCart([]);
-    setParkedTickets([]);
-    setStockMovements([]);
-    setExpenses([]);
-    setAlerts(SEED_ALERTS);
-    setToasts([]);
-    showToast('Datos reiniciados al estado semilla', 'info');
-  };
-
   return (
     <AppContext.Provider
       value={{
@@ -3264,8 +3246,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         showToast,
         showStockAlertToast,
         removeToast,
-
-        resetToSeedData,
       }}
     >
       {children}

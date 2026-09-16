@@ -5,7 +5,6 @@ import {
   Store,
   Users,
   Printer,
-  RotateCcw,
   ShieldCheck,
   Plus,
   Lock,
@@ -29,7 +28,6 @@ export const SettingsView: React.FC = () => {
     showToast,
     taxPercent,
     setTaxPercent,
-    resetToSeedData,
     addUser,
     storeInfo,
     updateStoreInfo,
@@ -137,12 +135,6 @@ export const SettingsView: React.FC = () => {
     setNewUserOwnerPin('');
   };
 
-  const handleResetData = () => {
-    if (window.confirm('¿Desea limpiar y reiniciar el sistema a su estado inicial vacío?')) {
-      resetToSeedData();
-    }
-  };
-
   return (
     <div className="flex-1 p-6 sm:p-8 bg-[#f8fafc] overflow-y-auto space-y-6">
       
@@ -165,14 +157,6 @@ export const SettingsView: React.FC = () => {
           >
             <Wrench className="w-4 h-4" />
             <span>Portal Maestro de Soporte</span>
-          </button>
-
-          <button
-            onClick={handleResetData}
-            className="flex items-center gap-2 px-3.5 py-2 bg-white border border-rose-200 text-rose-700 hover:bg-rose-50 text-xs font-bold rounded-xl shadow-xs transition-colors"
-          >
-            <RotateCcw className="w-4 h-4" />
-            <span>Limpiar Datos Demo</span>
           </button>
         </div>
       </div>

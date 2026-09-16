@@ -164,10 +164,10 @@ export const Navbar: React.FC<NavbarProps> = ({
           }`}
           title={
             isLoadingData
-              ? 'Sincronizando con Supabase...'
+              ? 'Sincronizando datos...'
               : isSupabaseConnected
-              ? 'Conectado a la base de datos Supabase (NEXUS FARO)'
-              : 'Sin conexión a Supabase'
+              ? 'Conectado — los cambios se guardan automáticamente'
+              : 'Sin conexión — los cambios pueden no estar guardándose'
           }
         >
           <Database
@@ -180,7 +180,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             }`}
           />
           <span className="text-[11px] font-bold">
-            {isLoadingData ? 'Sincronizando...' : isSupabaseConnected ? 'Supabase Nube' : 'Sin Conexión'}
+            {isLoadingData ? 'Sincronizando...' : isSupabaseConnected ? 'En línea' : 'Sin Conexión'}
           </span>
         </div>
 
