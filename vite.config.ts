@@ -11,6 +11,11 @@ export default defineConfig(() => {
       tailwindcss(),
       VitePWA({
         registerType: 'autoUpdate',
+        // false: el registro del service worker se hace a mano en main.tsx
+        // (con un chequeo periódico de actualizaciones) en vez del script
+        // que la build inyecta sola — si dejamos los dos, se registra dos
+        // veces sin necesidad.
+        injectRegister: false,
         includeAssets: ['favicon.png', 'apple-touch-icon.png'],
         // Sólo precachea el shell de la app (JS/CSS/HTML) para que instale y
         // cargue rápido — sin runtimeCaching para Supabase: cada venta,
