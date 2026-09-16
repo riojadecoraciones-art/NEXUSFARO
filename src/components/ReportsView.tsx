@@ -20,10 +20,13 @@ import {
   QrCode,
   ArrowUpRight,
   ShieldAlert,
+  Wallet,
+  Info,
+  AlertTriangle,
 } from 'lucide-react';
 
 export const ReportsView: React.FC = () => {
-  const { sales, products, currentUser, showToast, isSupportMode } = useApp();
+  const { sales, expenses, currentUser, showToast, isSupportMode } = useApp();
 
   // Igual que en Sidebar.tsx: la Llave Maestra (SUPERADMIN) auditando un
   // negocio ("Asistir a este Negocio") tiene que poder ver sus reportes
@@ -47,19 +50,42 @@ export const ReportsView: React.FC = () => {
   // Overall Financials
   const totalRevenue = useMemo(() => completedSales.reduce((sum, s) => sum + s.total, 0), [completedSales]);
 
-  // Cost and margin calculation
+  // Costo real de lo vendido: item.unitCost es el costo copiado al momento de
+  // la venta (ver types.ts), no una referencia en vivo al producto. Antes acá
+  // se recalculaba con products.find(...).costPrice — el costo ACTUAL del
+  // producto — así que si el costo cambiaba después (nueva compra a otro
+  // precio) o el producto se borraba, el margen de ventas viejas quedaba mal
+  // calculado con retroactividad, silenciosamente.
   const totalEstimatedCost = useMemo(() => {
     return completedSales.reduce((sum, sale) => {
-      const saleCost = sale.items.reduce((itemSum, it) => {
-        const prod = products.find((p) => p.id === it.productId);
-        return itemSum + (prod ? prod.costPrice * it.quantity : 0);
-      }, 0);
+      const saleCost = sale.items.reduce((itemSum, it) => itemSum + it.unitCost * it.quantity, 0);
       return sum + saleCost;
     }, 0);
-  }, [completedSales, products]);
+  }, [completedSales]);
 
   const grossProfit = totalRevenue - totalEstimatedCost;
   const profitMarginPercent = totalRevenue > 0 ? ((grossProfit / totalRevenue) * 100).toFixed(1) : '0.0';
+
+  // Gastos fijos efectivamente pagados en el período (misma lógica de "plata
+  // que realmente se movió" que las ventas: a diferencia de un sistema
+  // contable por devengado, acá "gasto del período" es lo que salió de la
+  // caja en esas fechas, no una cuota mensual proyectada de un gasto anual).
+  const fixedExpensesPaidInPeriod = useMemo(() => {
+    return expenses
+      .filter((e) => e.status === 'PAGADO' && e.lastPaidDate && isTimestampInRange(e.lastPaidDate, dateRange))
+      .reduce((sum, e) => sum + (e.lastPaidAmount ?? e.amount), 0);
+  }, [expenses, dateRange]);
+
+  // Deuda pendiente "ahora", sin importar el período elegido arriba — es una
+  // plata que igual vas a tener que pagar, tiene sentido mostrarla siempre.
+  const fixedExpensesPending = useMemo(() => {
+    return expenses
+      .filter((e) => e.status === 'PENDIENTE' || e.status === 'VENCIDO')
+      .reduce((sum, e) => sum + e.amount, 0);
+  }, [expenses]);
+
+  const netProfitReal = grossProfit - fixedExpensesPaidInPeriod;
+  const netMarginPercent = totalRevenue > 0 ? ((netProfitReal / totalRevenue) * 100).toFixed(1) : '0.0';
 
   // Breakdown by payment method
   const methodStats = useMemo(() => {
@@ -177,7 +203,7 @@ export const ReportsView: React.FC = () => {
         <div className="p-5 bg-white rounded-2xl border border-slate-200 shadow-xs">
           <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">Ingresos Brutos</span>
           <div className="text-3xl font-black text-slate-900 mt-2">
-            ${totalRevenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            {formatARS(totalRevenue)}
           </div>
           <span className="text-xs text-emerald-700 font-semibold mt-1 inline-block">
             {completedSales.length} transacciones — {periodLabel}
@@ -187,23 +213,80 @@ export const ReportsView: React.FC = () => {
         <div className="p-5 bg-white rounded-2xl border border-slate-200 shadow-xs">
           <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">Costo de Mercadería</span>
           <div className="text-3xl font-black text-slate-700 mt-2">
-            ${totalEstimatedCost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            {formatARS(totalEstimatedCost)}
           </div>
           <span className="text-xs text-slate-400 font-medium mt-1 inline-block">
             Costo ponderado de insumos
           </span>
         </div>
 
-        <div className="p-5 bg-gradient-to-br from-emerald-800 to-emerald-950 text-white rounded-2xl shadow-lg">
-          <span className="text-xs font-bold text-emerald-200 uppercase tracking-wider block">Ganancia Neta Estimada</span>
-          <div className="text-3xl font-black tracking-tight mt-2">
-            ${grossProfit.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+        <div className="p-5 bg-white rounded-2xl border border-slate-200 shadow-xs">
+          <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">Ganancia Bruta</span>
+          <div className="text-3xl font-black text-slate-900 mt-2">
+            {formatARS(grossProfit)}
           </div>
-          <div className="text-xs font-bold text-emerald-300 mt-1 flex items-center gap-1">
+          <div className="text-xs font-bold text-emerald-700 mt-1 flex items-center gap-1">
             <ArrowUpRight className="w-4 h-4" />
-            <span>Margen de Ganancia: {profitMarginPercent}%</span>
+            <span>Margen bruto: {profitMarginPercent}%</span>
           </div>
         </div>
+      </div>
+
+      {/* ¿Cuánto te queda realmente? — Ganancia Neta después de gastos fijos */}
+      <div className="bg-gradient-to-br from-emerald-800 to-emerald-950 text-white rounded-2xl shadow-lg p-6 sm:p-7">
+        <div className="flex items-start gap-3 mb-5">
+          <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center shrink-0">
+            <Wallet className="w-5 h-5 text-emerald-200" />
+          </div>
+          <div>
+            <h3 className="font-extrabold text-lg text-white">¿Cuánto te queda realmente?</h3>
+            <p className="text-xs text-emerald-200/90 font-medium mt-0.5">
+              Ganancia neta {periodLabel}, ya descontado el costo de mercadería y los gastos fijos que pagaste en ese período.
+            </p>
+          </div>
+        </div>
+
+        <div className="bg-white/5 rounded-xl border border-white/10 divide-y divide-white/10 mb-4">
+          <div className="flex items-center justify-between px-4 py-3 text-sm">
+            <span className="text-emerald-100/90 font-medium">Ventas totales</span>
+            <span className="font-mono font-bold text-white">{formatARS(totalRevenue)}</span>
+          </div>
+          <div className="flex items-center justify-between px-4 py-3 text-sm">
+            <span className="text-emerald-100/90 font-medium">− Costo de mercadería vendida</span>
+            <span className="font-mono font-bold text-white">{formatARS(totalEstimatedCost)}</span>
+          </div>
+          <div className="flex items-center justify-between px-4 py-3 text-sm">
+            <span className="text-emerald-100/90 font-medium">= Ganancia Bruta</span>
+            <span className="font-mono font-bold text-white">{formatARS(grossProfit)}</span>
+          </div>
+          <div className="flex items-center justify-between px-4 py-3 text-sm">
+            <span className="text-emerald-100/90 font-medium">− Gastos fijos pagados {periodLabel}</span>
+            <span className="font-mono font-bold text-white">{formatARS(fixedExpensesPaidInPeriod)}</span>
+          </div>
+          <div className="flex items-center justify-between px-4 py-4">
+            <span className="text-white font-extrabold text-sm">Ganancia Neta</span>
+            <div className="text-right">
+              <div className="font-mono font-black text-2xl text-white">{formatARS(netProfitReal)}</div>
+              <div className="text-[11px] font-bold text-emerald-300">Margen neto: {netMarginPercent}%</div>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-start gap-2 text-[11px] text-emerald-100/80 leading-relaxed">
+          <Info className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+          <span>
+            No incluye impuestos (IVA, Monotributo u otros) — consultá a tu contador para el neto final después de impuestos.
+          </span>
+        </div>
+
+        {fixedExpensesPending > 0 && (
+          <div className="flex items-start gap-2 text-[11px] text-amber-200 leading-relaxed mt-2 bg-amber-500/10 border border-amber-400/20 rounded-lg px-3 py-2.5">
+            <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+            <span>
+              Tenés <strong>{formatARS(fixedExpensesPending)}</strong> en gastos fijos pendientes o vencidos, sin pagar todavía — no están descontados arriba porque esa plata aún no salió de la caja.
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Methods & Cashiers Breakdown */}
