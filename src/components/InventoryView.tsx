@@ -94,6 +94,7 @@ export const InventoryView: React.FC = () => {
   const [newProdImage, setNewProdImage] = useState<string>('');
   const [newProdUnitType, setNewProdUnitType] = useState<ProductUnitType>('UNIDAD');
   const [newProdSupplierId, setNewProdSupplierId] = useState<string>('');
+  const [newProdExpirationDate, setNewProdExpirationDate] = useState<string>('');
 
   // Edit product form
   const [editProdName, setEditProdName] = useState<string>('');
@@ -106,6 +107,7 @@ export const InventoryView: React.FC = () => {
   const [editProdImage, setEditProdImage] = useState<string>('');
   const [editProdUnitType, setEditProdUnitType] = useState<ProductUnitType>('UNIDAD');
   const [editProdSupplierId, setEditProdSupplierId] = useState<string>('');
+  const [editProdExpirationDate, setEditProdExpirationDate] = useState<string>('');
 
   // Category Management Form
   const [newCategoryName, setNewCategoryName] = useState<string>('');
@@ -165,6 +167,7 @@ export const InventoryView: React.FC = () => {
     setEditProdImage(prod.imageUrl);
     setEditProdUnitType(prod.unitType);
     setEditProdSupplierId(prod.supplierId || '');
+    setEditProdExpirationDate(prod.expirationDate || '');
     setIsEditModalOpen(true);
   };
 
@@ -222,6 +225,7 @@ export const InventoryView: React.FC = () => {
       imageUrl: newProdImage.trim(),
       unitType: newProdUnitType,
       supplierId: newProdSupplierId || undefined,
+      expirationDate: newProdExpirationDate || undefined,
     });
 
     setIsAddModalOpen(false);
@@ -232,6 +236,7 @@ export const InventoryView: React.FC = () => {
     setNewProdCostPrice('');
     setNewProdStock('');
     setNewProdSupplierId('');
+    setNewProdExpirationDate('');
   };
 
   const handleSaveEditProduct = (e: React.FormEvent) => {
@@ -253,6 +258,7 @@ export const InventoryView: React.FC = () => {
       imageUrl: editProdImage.trim(),
       unitType: editProdUnitType,
       supplierId: editProdSupplierId || undefined,
+      expirationDate: editProdExpirationDate || undefined,
     });
 
     setIsEditModalOpen(false);
@@ -344,6 +350,7 @@ export const InventoryView: React.FC = () => {
               onClick={() => {
                 setNewProdCategory(categories[0] || 'Bebidas');
                 setNewProdSupplierId('');
+                setNewProdExpirationDate('');
                 setIsAddModalOpen(true);
               }}
               className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs tracking-wider rounded-xl shadow-md transition-all active:scale-98"
@@ -939,6 +946,20 @@ export const InventoryView: React.FC = () => {
                 </div>
               )}
 
+              {storeFeatures.tracksExpiration && (
+                <div>
+                  <label className="text-xs font-bold text-slate-700 block mb-1">
+                    Fecha de Vencimiento (Opcional)
+                  </label>
+                  <input
+                    type="date"
+                    value={editProdExpirationDate}
+                    onChange={(e) => setEditProdExpirationDate(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-medium text-slate-900 focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+              )}
+
               <div>
                 <label className="text-xs font-bold text-slate-700 block mb-1">Se vende por</label>
                 <select
@@ -1325,6 +1346,20 @@ export const InventoryView: React.FC = () => {
                       </option>
                     ))}
                   </select>
+                </div>
+              )}
+
+              {storeFeatures.tracksExpiration && (
+                <div>
+                  <label className="text-xs font-bold text-slate-700 block mb-1">
+                    Fecha de Vencimiento (Opcional)
+                  </label>
+                  <input
+                    type="date"
+                    value={newProdExpirationDate}
+                    onChange={(e) => setNewProdExpirationDate(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-medium text-slate-900 focus:outline-none focus:border-blue-500"
+                  />
                 </div>
               )}
 
