@@ -2568,7 +2568,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       showToast(`Producto "${created.name}" creado con éxito`, 'success');
     } catch (e) {
       console.error('Error creating product in Supabase:', e);
-      showToast('Error al guardar el producto en la base de datos', 'error');
+      // Código 23505 de Postgres = violación de unicidad. products tiene un
+      // índice único por (store_id, sku) — el error más común al crear un
+      // producto es, por lejos, repetir un SKU que ya existe, y el mensaje
+      // genérico de abajo no le decía al Dueño cuál era el problema real.
+      showToast(
+        (e as { code?: string })?.code === '23505'
+          ? `Ya existe un producto con el SKU "${productData.sku}" — usá uno distinto o editá el producto existente.`
+          : 'Error al guardar el producto en la base de datos',
+        'error'
+      );
     }
   };
 
