@@ -23,6 +23,7 @@ import { CashRegisterView } from './components/CashRegisterView';
 import { ContentCalendarView } from './components/ContentCalendarView';
 import { CashShiftModal } from './components/CashShiftModal';
 import { ExpensesView } from './components/ExpensesView';
+import { SuppliersView } from './components/SuppliersView';
 import { SupportModal } from './components/SupportModal';
 import { MasterAuthModal } from './components/MasterAuthModal';
 import { MasterPortalView } from './components/MasterPortalView';
@@ -40,6 +41,7 @@ const BUSINESS_DATA_VIEWS: ActiveView[] = [
   'dashboard',
   'inventory',
   'expenses',
+  'suppliers',
   'history',
   'reports',
   'cash_register',
@@ -203,6 +205,7 @@ const MainLayout: React.FC = () => {
               {activeView === 'dashboard' && <DashboardView />}
               {activeView === 'inventory' && <InventoryView />}
               {activeView === 'expenses' && <ExpensesView />}
+              {activeView === 'suppliers' && <SuppliersView />}
               {activeView === 'history' && <HistoryView />}
               {activeView === 'reports' && <ReportsView />}
               {activeView === 'content_calendar' && <ContentCalendarView />}

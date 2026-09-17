@@ -20,6 +20,7 @@ import {
   Briefcase,
   Sparkles,
   Calendar,
+  Truck,
 } from 'lucide-react';
 import { ActiveView } from '../types';
 import { UserAvatar } from './UserAvatar';
@@ -96,6 +97,12 @@ export const Sidebar: React.FC = () => {
       id: 'expenses',
       label: 'Gastos Fijos & Negocio',
       icon: ReceiptText,
+      visible: isOwner,
+    },
+    {
+      id: 'suppliers',
+      label: 'Proveedores',
+      icon: Truck,
       visible: isOwner,
     },
     {

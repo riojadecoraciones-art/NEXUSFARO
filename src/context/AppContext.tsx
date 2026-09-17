@@ -25,6 +25,7 @@ import {
   ProductImportResult,
   UNIT_TYPE_LABELS,
   isFractionalUnit,
+  Supplier,
 } from '../types';
 import { SEED_USERS, SEED_PRODUCTS, SEED_SALES, SEED_ALERTS } from '../mockData';
 import { sounds } from '../utils/soundEffects';
@@ -44,6 +45,7 @@ import {
   appAlertService,
   storeSettingsService,
   storeTenantService,
+  supplierService,
 } from '../services/supabaseService';
 
 interface AppContextType {
@@ -129,7 +131,7 @@ interface AppContextType {
     expirationDate?: string
   ) => Promise<void>;
   quickRestockProduct: (productId: string, quantityToAdd: number) => Promise<void>;
-  addProduct: (productData: Omit<Product, 'id'>) => Promise<void>;
+  addProduct: (productData: Omit<Product, 'id' | 'costUpdatedAt'>) => Promise<void>;
   importProducts: (
     rows: ProductImportRow[],
     onProgress?: (done: number, total: number) => void
@@ -142,6 +144,8 @@ interface AppContextType {
   lowStockProducts: Product[];
   /** Sólo productos de comercios con storeFeatures.tracksExpiration activo: vencidos o por vencer. */
   expiringProducts: Product[];
+  /** Con proveedor asignado y costo sin tocar hace COST_REVIEW_STALE_DAYS días o más. */
+  staleCostProducts: Product[];
 
   // POS & Cart
   /** Buscador del catálogo en el POS — compartido entre el buscador de arriba (Navbar) y la grilla de productos, para que sean el mismo campo. */
@@ -198,6 +202,12 @@ interface AppContextType {
   addContentIdea: (ideaData: Omit<ContentIdea, 'id' | 'createdAt'>) => Promise<void>;
   updateContentIdea: (id: string, updates: Partial<ContentIdea>) => Promise<void>;
   deleteContentIdea: (id: string) => Promise<boolean>;
+
+  // Proveedores
+  suppliers: Supplier[];
+  addSupplier: (supplierData: Omit<Supplier, 'id' | 'createdAt'>) => Promise<void>;
+  updateSupplier: (id: string, updates: Partial<Supplier>) => Promise<void>;
+  deleteSupplier: (id: string) => Promise<boolean>;
 
   // Sucursal & Datos del Negocio Personalizables
   storeInfo: StoreInfo;
@@ -276,6 +286,11 @@ const IS_MASTER_ACCESS_CONFIGURED = isHashed(MASTER_PASSWORD_HASH);
 // Ventana de aviso previo al vencimiento (días). Sólo aplica a comercios con
 // storeFeatures.tracksExpiration activo — ver expiringProducts.
 const EXPIRATION_WARNING_DAYS = 7;
+
+// Días sin tocar el costo de un producto para considerarlo "para revisar
+// con el proveedor". Sólo aplica a productos con supplierId asignado — ver
+// staleCostProducts.
+const COST_REVIEW_STALE_DAYS = 20;
 
 const MASTER_NOT_CONFIGURED_MESSAGE = MASTER_PASSWORD_HASH
   ? 'VITE_MASTER_PASSWORD_HASH está cargado pero no tiene el formato esperado. Esto pasa cuando los "$" del hash no quedaron escapados en .env.local: Vite los interpreta como referencias a otra variable y lo corta en silencio. Volvé a correr "npm run hash-password" y pegá la línea completa que imprime (ya sale con los "$" escapados).'
@@ -360,6 +375,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // 6. Gastos Fijos & Operativos
   const [expenses, setExpenses] = useState<FixedExpense[]>([]);
   const [contentIdeas, setContentIdeas] = useState<ContentIdea[]>([]);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
 
   // 7. Store & Branch Information
   const [storeInfo, setStoreInfo] = useState<StoreInfo>({
@@ -633,8 +649,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setActiveShift(activeShiftData);
       setCashMovements(fetchedMovements);
 
-      // 5. Fixed Expenses & Alerts
-      const [fetchedExpenses, fetchedAlerts] = await Promise.all([
+      // 5. Fixed Expenses, Alerts & Suppliers
+      const [fetchedExpenses, fetchedAlerts, fetchedSuppliers] = await Promise.all([
         fixedExpenseService.getAll().catch((err) => {
           console.warn('Error loading expenses:', err);
           return [];
@@ -643,10 +659,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           console.warn('Error loading alerts:', err);
           return [];
         }),
+        supplierService.getAll().catch((err) => {
+          console.warn('Error loading suppliers:', err);
+          return [];
+        }),
       ]);
 
       setExpenses(fetchedExpenses);
       setAlerts(fetchedAlerts);
+      setSuppliers(fetchedSuppliers);
 
       // 6. Content Ideas (Calendario de Contenidos)
       const fetchedContentIdeas = await contentIdeaService.getAll().catch((err) => {
@@ -946,6 +967,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           }
         }
       )
+      // Proveedores: si se agrega/edita/borra uno desde otra terminal (el
+      // Dueño puede tener el panel abierto en el local y en el celular).
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'suppliers' },
+        async () => {
+          if (isImpersonatingRef.current) return;
+          try {
+            const freshSuppliers = await supplierService.getAll();
+            setSuppliers(freshSuppliers);
+          } catch (e) {
+            console.error('Realtime suppliers refresh error:', e);
+          }
+        }
+      )
       .subscribe((status) => {
         // Antes esto se suscribía en silencio: si el canal no conectaba, la app
         // seguía andando con datos viejos y nadie se enteraba.
@@ -999,6 +1035,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // vuelve a correr cuando cambian los productos, momento en el que ya lee
   // el `alerts` más fresco.
   useEffect(() => {
+    // Sin este freno, auditar un comercio con productos vencidos ("Asistir
+    // a este Negocio") escribiría la alerta en la base del OPERADOR, no en
+    // la del comercio auditado — la sesión de Supabase nunca cambia durante
+    // la auditoría, sólo los datos que se muestran en pantalla.
+    if (isImpersonatingRef.current) return;
     if (expiringProducts.length === 0) return;
     const now = Date.now();
 
@@ -1037,6 +1078,63 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setAlerts((prev) => [...newAlerts, ...prev]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [expiringProducts]);
+
+  // Derived: productos con proveedor asignado cuyo costo no se toca hace
+  // COST_REVIEW_STALE_DAYS días o más — señal de que el proveedor puede
+  // haberlo subido en silencio mientras se sigue vendiendo al margen viejo.
+  // Sin proveedor asignado no hay a quién preguntarle, así que no entra acá
+  // — ese vínculo es en sí mismo el "opt-in" a esta función, sin necesidad
+  // de un flag aparte configurado desde Llave Maestra.
+  const staleCostProducts = useMemo(() => {
+    const staleMs = COST_REVIEW_STALE_DAYS * 24 * 60 * 60 * 1000;
+    const now = Date.now();
+    return products.filter((p) => {
+      if (!p.supplierId) return false;
+      const updatedMs = new Date(p.costUpdatedAt).getTime();
+      return !isNaN(updatedMs) && now - updatedMs >= staleMs;
+    });
+  }, [products]);
+
+  useEffect(() => {
+    // Mismo freno que expiringProducts: sin esto, auditar un comercio con
+    // costos desactualizados escribiría la alerta en la base del operador.
+    if (isImpersonatingRef.current) return;
+    if (staleCostProducts.length === 0) return;
+    const now = Date.now();
+
+    const newAlerts: AppAlert[] = [];
+    staleCostProducts.forEach((p) => {
+      if (alerts.some((a) => a.productId === p.id && a.type === 'COSTO_DESACTUALIZADO')) return;
+
+      const supplier = suppliers.find((s) => s.id === p.supplierId);
+      const days = Math.floor((now - new Date(p.costUpdatedAt).getTime()) / (24 * 60 * 60 * 1000));
+      newAlerts.push({
+        id: `alt-cost-${Date.now()}-${p.id}`,
+        type: 'COSTO_DESACTUALIZADO',
+        title: `Revisar costo: ${p.name}`,
+        message: supplier
+          ? `Hace ${days} días que no se actualiza el costo — consultá con ${supplier.name} si sigue vigente.`
+          : `Hace ${days} días que no se actualiza el costo — consultá con el proveedor si sigue vigente.`,
+        timestamp: 'Recién',
+        read: false,
+        actionRoute: 'suppliers',
+        actionLabel: 'VER PROVEEDOR',
+        productId: p.id,
+        productName: p.name,
+        productSku: p.sku,
+        productImage: p.imageUrl,
+        category: p.category,
+        severity: 'warning',
+      });
+    });
+
+    if (newAlerts.length === 0) return;
+    newAlerts.forEach((alert) => {
+      appAlertService.create(alert).catch((e) => console.error('Error saving stale cost alert:', e));
+    });
+    setAlerts((prev) => [...newAlerts, ...prev]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [staleCostProducts]);
 
   const canAccessView = (view: ActiveView): boolean => {
     if (!currentUser) return false;
@@ -2336,7 +2434,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     const referenceUpdates: Partial<Product> = {};
-    if (hasNewCost) referenceUpdates.costPrice = unitCost;
+    if (hasNewCost) {
+      referenceUpdates.costPrice = unitCost;
+      // Recibir mercadería con un costo nuevo ES la verificación — a
+      // diferencia de updateProduct (editar producto por otro motivo), acá
+      // siempre corresponde reiniciar el reloj de "hace cuánto no se revisa".
+      referenceUpdates.costUpdatedAt = new Date().toISOString();
+    }
     if (hasNewExpiration) referenceUpdates.expirationDate = expirationDate;
 
     try {
@@ -2356,6 +2460,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               ...p,
               stock: newStock,
               costPrice: hasNewCost ? unitCost! : p.costPrice,
+              costUpdatedAt: hasNewCost ? referenceUpdates.costUpdatedAt! : p.costUpdatedAt,
               expirationDate: hasNewExpiration ? expirationDate : p.expirationDate,
             }
           : p
@@ -2375,6 +2480,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         : `Se agregaron +${quantityToAdd} ${unitLabel} a "${prod.name}"`,
       'success'
     );
+
+    // Aviso aparte (no reemplaza al de arriba): si el costo subió respecto
+    // al anterior, es la primera señal real de que el proveedor lo aumentó
+    // — antes de esto, sólo se entera cuando ya volvió a comprar. La guarda
+    // `prod.costPrice > 0` evita un "+Infinity%" cuando el producto nunca
+    // tuvo costo cargado.
+    if (hasNewCost && prod.costPrice > 0 && unitCost! > prod.costPrice) {
+      const pctIncrease = Math.round(((unitCost! - prod.costPrice) / prod.costPrice) * 100);
+      showToast(
+        `El costo de "${prod.name}" subió de ${formatARS(prod.costPrice)} a ${formatARS(unitCost!)} (+${pctIncrease}%) — revisá si tu precio de venta sigue dejando margen.`,
+        'warning',
+        { title: 'Aumento de Costo', isPersistent: true, productId: prod.id, productName: prod.name }
+      );
+    }
   };
 
   const quickRestockProduct = async (productId: string, quantityToAdd: number) => {
@@ -2436,7 +2555,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
   };
 
-  const addProduct = async (productData: Omit<Product, 'id'>) => {
+  const addProduct = async (productData: Omit<Product, 'id' | 'costUpdatedAt'>) => {
     if (blockIfImpersonating()) return;
     try {
       const created = await productService.create(productData);
@@ -2508,8 +2627,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const updateProduct = async (id: string, productData: Partial<Product>) => {
     if (blockIfImpersonating()) return;
+    // Si el costo cambia de verdad (no sólo "vino incluido en el
+    // formulario" — el modal de Editar Producto siempre lo manda,
+    // precargado con el valor actual), se pone en hora cost_updated_at.
+    // Comparar contra el valor ya en memoria evita que guardar el modal por
+    // cualquier otro motivo (nombre, categoría...) reinicie la ventana de
+    // aviso de "hace cuánto no se revisa" sin que el costo se haya tocado.
+    const existing = products.find((p) => p.id === id);
+    const dataToSave: Partial<Product> =
+      productData.costPrice !== undefined && existing && productData.costPrice !== existing.costPrice
+        ? { ...productData, costUpdatedAt: new Date().toISOString() }
+        : productData;
+
     try {
-      await productService.update(id, productData);
+      await productService.update(id, dataToSave);
     } catch (e) {
       console.error('Error updating product in Supabase:', e);
     }
@@ -2517,7 +2648,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setProducts((prev) =>
       prev.map((p) => {
         if (p.id === id) {
-          const updated = { ...p, ...productData };
+          const updated = { ...p, ...dataToSave };
           if (updated.stock <= updated.minStock) {
             if (p.stock > p.minStock) {
               showStockAlertToast(updated, updated.stock);
@@ -2850,6 +2981,49 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // ==========================================
+  // PROVEEDORES
+  // ==========================================
+
+  const addSupplier = async (supplierData: Omit<Supplier, 'id' | 'createdAt'>) => {
+    if (blockIfImpersonating()) return;
+    try {
+      const created = await supplierService.create(supplierData);
+      setSuppliers((prev) => [created, ...prev]);
+      showToast(`Proveedor "${created.name}" agregado con éxito`, 'success');
+    } catch (e) {
+      console.error('Error adding supplier in Supabase:', e);
+      showToast('Error al registrar proveedor en la base de datos', 'error');
+    }
+  };
+
+  const updateSupplier = async (id: string, updates: Partial<Supplier>) => {
+    if (blockIfImpersonating()) return;
+    try {
+      await supplierService.update(id, updates);
+    } catch (e) {
+      console.error('Error updating supplier in Supabase:', e);
+    }
+    setSuppliers((prev) => prev.map((s) => (s.id === id ? { ...s, ...updates } : s)));
+    showToast('Proveedor actualizado correctamente', 'success');
+  };
+
+  const deleteSupplier = async (id: string): Promise<boolean> => {
+    if (blockIfImpersonating()) return false;
+    const target = suppliers.find((s) => s.id === id);
+    if (!target) return false;
+
+    try {
+      await supplierService.delete(id);
+    } catch (e) {
+      console.error('Error deleting supplier in Supabase:', e);
+    }
+
+    setSuppliers((prev) => prev.filter((s) => s.id !== id));
+    showToast(`Proveedor "${target.name}" eliminado`, 'info');
+    return true;
+  };
+
+  // ==========================================
   // STORE INFO HANDLERS
   // ==========================================
 
@@ -3060,6 +3234,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // (que quedarían mostradas, por error, como si fueran del comercio
     // auditado). blockIfImpersonating ya impide escribir mientras tanto.
     setContentIdeas([]);
+    // Mismo motivo y mismo tratamiento que el Calendario de Contenidos:
+    // Proveedores todavía no forma parte de get-store-snapshot.
+    setSuppliers([]);
 
     setIsImpersonating(true);
     setActiveViewRaw('dashboard');
@@ -3275,6 +3452,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         deleteCategory,
         lowStockProducts,
         expiringProducts,
+        staleCostProducts,
 
         posSearchTerm,
         setPosSearchTerm,
@@ -3320,6 +3498,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addContentIdea,
         updateContentIdea,
         deleteContentIdea,
+
+        suppliers,
+        addSupplier,
+        updateSupplier,
+        deleteSupplier,
 
         storeInfo,
         updateStoreInfo,

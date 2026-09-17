@@ -64,6 +64,10 @@ export interface Product {
   unitType: ProductUnitType;
   /** Sólo tiene sentido en comercios con StoreTenant.tracksExpiration activo. Formato YYYY-MM-DD. */
   expirationDate?: string;
+  /** A qué proveedor del directorio se le compra habitualmente. Referencia blanda: sin FK. */
+  supplierId?: string;
+  /** Última vez que se escribió costPrice de verdad (no la fecha de creación). Ver AppContext.staleCostProducts. */
+  costUpdatedAt: string;
 }
 
 /** Una fila ya mapeada y validada, lista para mandar a bulkUpsert(). */
@@ -206,7 +210,14 @@ export interface StockMovement {
 
 export interface AppAlert {
   id: string;
-  type: 'STOCK_BAJO' | 'STOCK_AGOTADO' | 'CAJA_DIFERENCIA' | 'INFO' | 'PRODUCTO_POR_VENCER' | 'PRODUCTO_VENCIDO';
+  type:
+    | 'STOCK_BAJO'
+    | 'STOCK_AGOTADO'
+    | 'CAJA_DIFERENCIA'
+    | 'INFO'
+    | 'PRODUCTO_POR_VENCER'
+    | 'PRODUCTO_VENCIDO'
+    | 'COSTO_DESACTUALIZADO';
   title: string;
   message: string;
   timestamp: string;
@@ -352,7 +363,8 @@ export type ActiveView =
   | 'settings'
   | 'cash_register'
   | 'master_portal'
-  | 'content_calendar';
+  | 'content_calendar'
+  | 'suppliers';
 
 export type ContentIdeaType = 'PROMOCION' | 'PUBLICACION' | 'HISTORIA' | 'RECORDATORIO';
 
@@ -369,6 +381,20 @@ export interface ContentIdea {
   type: ContentIdeaType;
   /** Sin fecha = todavía en el Banco de Ideas, no asignada al calendario. Formato YYYY-MM-DD. */
   scheduledDate?: string;
+  notes?: string;
+  createdAt: string;
+}
+
+/**
+ * Directorio de proveedores del comercio: nombre + contacto directo para
+ * consultar precios (WhatsApp/web). No hay integración real con ninguno de
+ * los dos — es sólo un acceso rápido de un toque, sin leer precios de ahí.
+ */
+export interface Supplier {
+  id: string;
+  name: string;
+  whatsappPhone?: string;
+  websiteUrl?: string;
   notes?: string;
   createdAt: string;
 }

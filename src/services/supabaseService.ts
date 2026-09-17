@@ -17,6 +17,7 @@ import {
   UserRole,
   ProductImportRow,
   ContentIdea,
+  Supplier,
 } from '../types';
 
 // ==========================================
@@ -44,6 +45,8 @@ function mapProductRow(row: any): Product {
     description: row.description || undefined,
     unitType: (row.unit_type as Product['unitType']) || 'UNIDAD',
     expirationDate: row.expiration_date || undefined,
+    supplierId: row.supplier_id || undefined,
+    costUpdatedAt: row.cost_updated_at,
   };
 }
 
@@ -160,6 +163,17 @@ function mapContentIdeaRow(row: any): ContentIdea {
     title: row.title,
     type: row.type,
     scheduledDate: row.scheduled_date || undefined,
+    notes: row.notes || undefined,
+    createdAt: row.created_at,
+  };
+}
+
+function mapSupplierRow(row: any): Supplier {
+  return {
+    id: row.id,
+    name: row.name,
+    whatsappPhone: row.whatsapp_phone || undefined,
+    websiteUrl: row.website_url || undefined,
     notes: row.notes || undefined,
     createdAt: row.created_at,
   };
@@ -444,7 +458,7 @@ export const productService = {
     return (data || []).map(mapProductRow);
   },
 
-  async create(product: Omit<Product, 'id'> & { id?: string }): Promise<Product> {
+  async create(product: Omit<Product, 'id' | 'costUpdatedAt'> & { id?: string }): Promise<Product> {
     const id = product.id || `prd-${Date.now()}`;
     const { data, error } = await supabase
       .from('products')
@@ -462,6 +476,7 @@ export const productService = {
         description: product.description || '',
         unit_type: product.unitType || 'UNIDAD',
         expiration_date: product.expirationDate || null,
+        supplier_id: product.supplierId || null,
       })
       .select()
       .single();
@@ -491,6 +506,12 @@ export const productService = {
     if (updates.description !== undefined) dbUpdates.description = updates.description;
     if (updates.unitType !== undefined) dbUpdates.unit_type = updates.unitType;
     if (updates.expirationDate !== undefined) dbUpdates.expiration_date = updates.expirationDate || null;
+    if (updates.supplierId !== undefined) dbUpdates.supplier_id = updates.supplierId || null;
+    // Pasamanos mecánico: quien llama (AppContext.updateProduct) decide si
+    // el costo cambió de verdad y sólo ahí manda este campo — acá no se
+    // deriva de costPrice, para no reiniciar el reloj de "hace cuánto no se
+    // revisa" con cualquier otro cambio del producto.
+    if (updates.costUpdatedAt !== undefined) dbUpdates.cost_updated_at = updates.costUpdatedAt;
 
     const { error } = await supabase.from('products').update(dbUpdates).eq('id', id);
     if (error) {
@@ -559,6 +580,11 @@ export const productService = {
         description: r.description || '',
         unit_type: r.unitType || 'UNIDAD',
         expiration_date: r.expirationDate || null,
+        // Reimportar el catálogo es en sí mismo un acto de "esto está
+        // verificado hoy" — a diferencia de editar un producto por otro
+        // motivo, acá SÍ corresponde reiniciar el reloj sin comparar contra
+        // el valor anterior.
+        cost_updated_at: new Date().toISOString(),
       }));
 
       const { error } = await supabase
@@ -1484,6 +1510,72 @@ export const storeTenantService = {
     };
 
     return { success: true, snapshot };
+  },
+};
+
+// ==========================================
+// 12. SUPPLIERS SERVICE (DIRECTORIO DE PROVEEDORES)
+// ==========================================
+
+export const supplierService = {
+  async getAll(): Promise<Supplier[]> {
+    const { data, error } = await supabase
+      .from('suppliers')
+      .select('*')
+      .order('name', { ascending: true });
+
+    if (error) {
+      console.error('Error fetching suppliers:', error);
+      throw error;
+    }
+
+    return (data || []).map(mapSupplierRow);
+  },
+
+  async create(supplier: Omit<Supplier, 'id' | 'createdAt'> & { id?: string; createdAt?: string }): Promise<Supplier> {
+    const id = supplier.id || `supplier-${Date.now()}`;
+    const createdAt = supplier.createdAt || new Date().toISOString();
+
+    const { data, error } = await supabase
+      .from('suppliers')
+      .insert({
+        id,
+        name: supplier.name,
+        whatsapp_phone: supplier.whatsappPhone || null,
+        website_url: supplier.websiteUrl || null,
+        notes: supplier.notes || null,
+        created_at: createdAt,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error creating supplier:', error);
+      throw error;
+    }
+
+    return mapSupplierRow(data);
+  },
+
+  async update(id: string, updates: Partial<Supplier>): Promise<void> {
+    const dbUpdates: Record<string, any> = {};
+
+    if (updates.name !== undefined) dbUpdates.name = updates.name;
+    if (updates.whatsappPhone !== undefined) dbUpdates.whatsapp_phone = updates.whatsappPhone || null;
+    if (updates.websiteUrl !== undefined) dbUpdates.website_url = updates.websiteUrl || null;
+    if (updates.notes !== undefined) dbUpdates.notes = updates.notes;
+
+    const { error } = await supabase.from('suppliers').update(dbUpdates).eq('id', id);
+    if (error) {
+      console.error('Error updating supplier:', error);
+    }
+  },
+
+  async delete(id: string): Promise<void> {
+    const { error } = await supabase.from('suppliers').delete().eq('id', id);
+    if (error) {
+      console.error('Error deleting supplier:', error);
+    }
   },
 };
 

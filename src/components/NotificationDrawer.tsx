@@ -48,7 +48,8 @@ export const NotificationDrawer: React.FC = () => {
         alert.type !== 'STOCK_BAJO' &&
         alert.type !== 'STOCK_AGOTADO' &&
         alert.type !== 'PRODUCTO_POR_VENCER' &&
-        alert.type !== 'PRODUCTO_VENCIDO'
+        alert.type !== 'PRODUCTO_VENCIDO' &&
+        alert.type !== 'COSTO_DESACTUALIZADO'
       ) {
         return false;
       }
@@ -78,7 +79,8 @@ export const NotificationDrawer: React.FC = () => {
         a.type === 'STOCK_BAJO' ||
         a.type === 'STOCK_AGOTADO' ||
         a.type === 'PRODUCTO_POR_VENCER' ||
-        a.type === 'PRODUCTO_VENCIDO'
+        a.type === 'PRODUCTO_VENCIDO' ||
+        a.type === 'COSTO_DESACTUALIZADO'
     ).length;
   }, [alerts]);
 
@@ -88,9 +90,9 @@ export const NotificationDrawer: React.FC = () => {
 
   if (!isNotificationsPanelOpen) return null;
 
-  const handleNavigateToInventory = (sku?: string) => {
+  const handleNavigateToAlertTarget = (alert: AppAlert) => {
     setIsNotificationsPanelOpen(false);
-    setActiveView('inventory');
+    setActiveView((alert.actionRoute as any) || 'inventory');
   };
 
   const handleQuickRestock = (productId: string, amount: number) => {
@@ -253,6 +255,7 @@ export const NotificationDrawer: React.FC = () => {
                 const isCashAlert = alert.type === 'CAJA_DIFERENCIA';
                 const isExpired = alert.type === 'PRODUCTO_VENCIDO';
                 const isExpiringSoon = alert.type === 'PRODUCTO_POR_VENCER';
+                const isStaleCost = alert.type === 'COSTO_DESACTUALIZADO';
 
                 let cardStyle = 'bg-white border-slate-200 text-slate-900';
                 let badgeStyle = 'bg-slate-100 text-slate-700 border-slate-200';
@@ -266,7 +269,7 @@ export const NotificationDrawer: React.FC = () => {
                   badgeStyle = 'bg-rose-100 text-rose-800 border-rose-200';
                   iconWrapperStyle = 'bg-rose-50 text-rose-600 border-rose-200';
                   IconComponent = AlertOctagon;
-                } else if (isLowStock || isExpiringSoon) {
+                } else if (isLowStock || isExpiringSoon || isStaleCost) {
                   cardStyle = alert.read
                     ? 'bg-white/80 border-amber-200/80 text-slate-800'
                     : 'bg-white border-amber-300 shadow-sm ring-1 ring-amber-100';
@@ -328,6 +331,8 @@ export const NotificationDrawer: React.FC = () => {
                                 ? 'VENCIDO'
                                 : isExpiringSoon
                                 ? 'POR VENCER'
+                                : isStaleCost
+                                ? 'COSTO DESACTUALIZADO'
                                 : 'ALERTA CAJA'}
                             </span>
                             {alert.category && (
@@ -468,10 +473,10 @@ export const NotificationDrawer: React.FC = () => {
                     {/* Card Footer Navigation */}
                     <div className="mt-3 flex items-center justify-end gap-2">
                       <button
-                        onClick={() => handleNavigateToInventory(alert.productSku)}
+                        onClick={() => handleNavigateToAlertTarget(alert)}
                         className="text-xs text-blue-600 hover:text-blue-800 font-bold flex items-center gap-1 py-1 px-2.5 rounded-lg hover:bg-blue-50 transition-colors"
                       >
-                        Gestionar en Inventario
+                        {alert.actionRoute === 'suppliers' ? 'Ver Proveedores' : 'Gestionar en Inventario'}
                         <ArrowRight className="w-3.5 h-3.5" />
                       </button>
                     </div>
