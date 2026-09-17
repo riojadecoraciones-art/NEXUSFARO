@@ -2652,6 +2652,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       await productService.update(id, dataToSave);
     } catch (e) {
       console.error('Error updating product in Supabase:', e);
+      // Mismo criterio que addProduct: si falló por SKU duplicado (otro
+      // producto ya usa el que se intentó guardar), decirlo específicamente.
+      // Antes este catch sólo logueaba y el código seguía de largo — el
+      // Dueño veía "Producto actualizado correctamente" aunque el guardado
+      // hubiera fallado de verdad en la base.
+      showToast(
+        (e as { code?: string })?.code === '23505'
+          ? `Ya existe otro producto con el SKU "${dataToSave.sku}" — usá uno distinto.`
+          : 'Error al actualizar el producto en la base de datos',
+        'error'
+      );
+      return;
     }
 
     setProducts((prev) =>
