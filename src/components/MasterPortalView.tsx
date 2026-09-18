@@ -233,10 +233,16 @@ export const MasterPortalView: React.FC = () => {
   };
 
   const handleDeleteStore = async (store: StoreTenant) => {
-    if (confirm(`¿Estás seguro de eliminar el registro del negocio "${store.name}"?`)) {
-      await deleteStoreTenant(store.id);
-      showToast(`Negocio "${store.name}" eliminado`, 'info');
-    }
+    // Borrado permanente de verdad (cascada en la base): confirm() genérico
+    // ya no alcanza una vez que este botón puede destruir ventas, stock,
+    // empleados y auditoría de un negocio real sin posibilidad de deshacerlo.
+    // deleteStoreTenant ya muestra su propio toast de éxito/error — repetirlo
+    // acá mostraba "eliminado" aunque el borrado hubiera fallado en la base.
+    const confirmed = confirm(
+      `¿Eliminar PERMANENTEMENTE "${store.name}"?\n\nEsto borra de una sola vez, sin posibilidad de deshacerlo, todas las ventas, stock, empleados, alertas, gastos, proveedores y auditoría de este negocio.`
+    );
+    if (!confirmed) return;
+    await deleteStoreTenant(store.id);
   };
 
   // Handlers para aprovisionar la cuenta de terminal de un comercio

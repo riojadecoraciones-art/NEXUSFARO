@@ -232,7 +232,7 @@ interface AppContextType {
   storeTenants: StoreTenant[];
   createStoreTenant: (tenant: Omit<StoreTenant, 'id' | 'createdAt'>) => Promise<StoreTenant>;
   updateStoreTenant: (id: string, updates: Partial<StoreTenant>) => Promise<void>;
-  deleteStoreTenant: (id: string) => Promise<void>;
+  deleteStoreTenant: (id: string) => Promise<boolean>;
   provisionStoreTerminal: (
     storeId: string,
     terminalEmail: string
@@ -3164,17 +3164,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     showToast('Datos del comercio actualizados', 'info');
   };
 
-  const deleteStoreTenant = async (id: string): Promise<void> => {
+  const deleteStoreTenant = async (id: string): Promise<boolean> => {
     try {
       await storeTenantService.delete(id);
     } catch (e) {
       console.error('Error deleting store tenant in Supabase:', e);
       showToast('Error al eliminar el comercio en la base de datos', 'error');
-      return;
+      return false;
     }
 
     setStoreTenants((prev) => prev.filter((t) => t.id !== id));
     showToast('Comercio eliminado', 'info');
+    return true;
   };
 
   /**
