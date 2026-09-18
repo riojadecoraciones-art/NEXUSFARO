@@ -1001,10 +1001,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   }, [hasTerminalSession, showToast]);
 
+  // Los empleados no ven alertas de costo/proveedor: revelan con quién
+  // trabaja el comercio y cómo vienen sus márgenes, información de negocio
+  // que hoy no tienen en ninguna otra pantalla (Proveedores/Inventario les
+  // ocultan lo mismo). El Dueño y Llave Maestra ven la lista completa.
+  const visibleAlerts = useMemo(() => {
+    if (currentUser?.role === 'CAJERO') {
+      return alerts.filter((a) => a.type !== 'COSTO_DESACTUALIZADO');
+    }
+    return alerts;
+  }, [alerts, currentUser]);
+
   // Unread alerts count
   const unreadAlertsCount = useMemo(() => {
-    return alerts.filter((a) => !a.read).length;
-  }, [alerts]);
+    return visibleAlerts.filter((a) => !a.read).length;
+  }, [visibleAlerts]);
 
   // Derived low stock products
   const lowStockProducts = useMemo(() => {
@@ -1148,7 +1159,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return view !== 'master_portal';
     }
     // CAJERO (Empleado)
-    if (view === 'pos' || view === 'cash_register') return true;
+    // Calendario de Contenidos sin permiso especial: son quienes de verdad
+    // graban/publican, así que necesitan ver qué está planificado.
+    if (view === 'pos' || view === 'cash_register' || view === 'content_calendar') return true;
     if (view === 'inventory' && currentUser.canManageInventory) return true;
     return false;
   };
@@ -2839,23 +2852,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const markAllAlertsAsRead = async () => {
     if (blockIfImpersonating()) return;
+    // Sólo los ids que este usuario puede ver — así un empleado nunca marca
+    // como leída (ni toca en la base) una alerta de costo/proveedor oculta.
+    const ids = visibleAlerts.map((a) => a.id);
     try {
-      await appAlertService.markAllAsRead();
+      await appAlertService.markAllAsRead(ids);
     } catch (e) {
       console.error('Error marking all alerts as read in Supabase:', e);
     }
-    setAlerts((prev) => prev.map((a) => ({ ...a, read: true })));
+    setAlerts((prev) => prev.map((a) => (ids.includes(a.id) ? { ...a, read: true } : a)));
     showToast('Todas las alertas marcadas como leídas', 'info');
   };
 
   const clearAllAlerts = async () => {
     if (blockIfImpersonating()) return;
+    // Mismo criterio que markAllAlertsAsRead: nunca borrar de la base una
+    // alerta que este usuario ni siquiera puede ver.
+    const ids = visibleAlerts.map((a) => a.id);
     try {
-      await appAlertService.clearAll();
+      await appAlertService.clearAll(ids);
     } catch (e) {
       console.error('Error clearing alerts in Supabase:', e);
     }
-    setAlerts([]);
+    setAlerts((prev) => prev.filter((a) => !ids.includes(a.id)));
     showToast('Historial de alertas limpiado', 'info');
   };
 
@@ -3555,7 +3574,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         isImpersonating,
         isImpersonationLoading,
 
-        alerts,
+        alerts: visibleAlerts,
         unreadAlertsCount,
         dismissAlert,
         markAlertAsRead,

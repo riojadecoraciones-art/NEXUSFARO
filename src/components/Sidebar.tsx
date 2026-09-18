@@ -118,10 +118,13 @@ export const Sidebar: React.FC = () => {
       visible: isOwner,
     },
     {
+      // Sin permiso especial, a diferencia de Inventario: son los empleados
+      // quienes de verdad graban/publican el contenido, así que necesitan
+      // ver qué está planificado.
       id: 'content_calendar',
       label: 'Calendario de Contenidos',
       icon: Calendar,
-      visible: isOwner,
+      visible: isOwner || isCashier,
     },
     {
       id: 'cash_register',

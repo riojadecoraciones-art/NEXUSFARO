@@ -1156,8 +1156,9 @@ export const appAlertService = {
     if (error) console.error('Error marking alert as read:', error);
   },
 
-  async markAllAsRead(): Promise<void> {
-    const { error } = await supabase.from('app_alerts').update({ read: true }).neq('read', true);
+  async markAllAsRead(ids: string[]): Promise<void> {
+    if (ids.length === 0) return;
+    const { error } = await supabase.from('app_alerts').update({ read: true }).in('id', ids);
     if (error) console.error('Error marking all alerts as read:', error);
   },
 
@@ -1166,8 +1167,9 @@ export const appAlertService = {
     if (error) console.error('Error deleting alert:', error);
   },
 
-  async clearAll(): Promise<void> {
-    const { error } = await supabase.from('app_alerts').delete().neq('id', '');
+  async clearAll(ids: string[]): Promise<void> {
+    if (ids.length === 0) return;
+    const { error } = await supabase.from('app_alerts').delete().in('id', ids);
     if (error) console.error('Error clearing alerts:', error);
   },
 };
