@@ -20,18 +20,20 @@ interface PaymentModalProps {
 }
 
 export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, onSuccess }) => {
-  const { cartTotal, confirmSale, currentUser, showToast } = useApp();
+  const { cartTotal, cartDiscountAmount, confirmSale, currentUser, showToast } = useApp();
 
   const [method, setMethod] = useState<PaymentMethodType>('EFECTIVO');
   const [cashReceived, setCashReceived] = useState<string>(cartTotal.toFixed(2));
-  
+
   // Mixed payment states
   const [splitCash, setSplitCash] = useState<string>('0');
   const [splitCard, setSplitCard] = useState<string>('0');
   const [splitQR, setSplitQR] = useState<string>('0');
 
   const [notes, setNotes] = useState<string>('');
+  const [discountAuthPin, setDiscountAuthPin] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+  const hasDiscount = cartDiscountAmount > 0;
 
   // Sync cashReceived when total changes or modal opens
   useEffect(() => {
@@ -41,6 +43,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, onS
       setSplitCard((cartTotal / 2).toFixed(2));
       setSplitQR('0');
       setNotes('');
+      setDiscountAuthPin('');
     }
   }, [isOpen, cartTotal]);
 
@@ -80,6 +83,11 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, onS
   };
 
   const handleConfirm = async () => {
+    if (hasDiscount && !/^\d{4}$/.test(discountAuthPin)) {
+      showToast('Este descuento necesita el PIN de autorización (4 dígitos)', 'error');
+      return;
+    }
+
     setIsSubmitting(true);
 
     let breakdown: PaymentDetail[] = [];
@@ -106,12 +114,15 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, onS
       if (parseFloat(splitQR) > 0) breakdown.push({ method: 'TRANSFERENCIA_QR', amount: parseFloat(splitQR) });
     }
 
-    const sale = await confirmSale({
-      method,
-      breakdown,
-      amountReceived: method === 'EFECTIVO' ? cashNum : undefined,
-      notes,
-    });
+    const sale = await confirmSale(
+      {
+        method,
+        breakdown,
+        amountReceived: method === 'EFECTIVO' ? cashNum : undefined,
+        notes,
+      },
+      hasDiscount ? discountAuthPin : undefined
+    );
 
     setIsSubmitting(false);
     if (sale) {
@@ -372,6 +383,31 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, onS
               className="w-full px-3.5 py-2 text-xs bg-slate-50 border border-slate-200 focus:border-slate-400 rounded-xl focus:outline-none"
             />
           </div>
+
+          {/* Descuento aplicado: requiere autorización verificada del lado
+              del servidor (Dueño o encargado con permiso de descuento) —
+              RLS por sí sola no puede distinguir quién de la terminal está
+              pidiendo el descuento. */}
+          {hasDiscount && (
+            <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-xl">
+              <label className="text-xs font-bold text-amber-900 block mb-1">
+                Descuento de {formatARS(cartDiscountAmount)} — PIN de autorización
+              </label>
+              <input
+                type="password"
+                inputMode="numeric"
+                maxLength={4}
+                required
+                placeholder="••••"
+                value={discountAuthPin}
+                onChange={(e) => setDiscountAuthPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                className="w-full px-3 py-2 border border-amber-300 rounded-xl text-base font-bold tracking-[0.3em] text-slate-900 focus:outline-none focus:border-amber-500"
+              />
+              <p className="text-[10px] text-amber-700 mt-1">
+                PIN de un Dueño o de alguien con permiso de descuento habilitado.
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Footer Actions */}
@@ -390,6 +426,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, onS
             disabled={
               (method === 'EFECTIVO' && !isCashSufficient) ||
               (method === 'MIXTO' && !isMixedValid) ||
+              (hasDiscount && discountAuthPin.length !== 4) ||
               isSubmitting
             }
             className="px-7 py-3 rounded-xl bg-slate-950 hover:bg-slate-900 text-white font-extrabold text-sm tracking-wide shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-all active:scale-98"

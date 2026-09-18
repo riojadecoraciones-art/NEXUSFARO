@@ -849,20 +849,106 @@ export const saleService = {
     return sale;
   },
 
-  async refund(saleId: string, refundedBy: string, refundedAt: string): Promise<void> {
-    const { error } = await supabase
-      .from('sales')
-      .update({
-        status: 'ANULADA_DEVUELTA',
-        refunded_by: refundedBy,
-        refunded_at: refundedAt,
-      })
-      .eq('id', saleId);
+  // No hay un refund() de escritura directa acá: ver verifiedActionService.refundSale
+  // más abajo — anular una venta requiere permiso de reembolso, que RLS no
+  // puede verificar (una terminal es una sesión compartida por todos los
+  // empleados del comercio), así que pasa por la Edge Function verified-action.
+};
+
+/**
+ * Acciones sensibles de POS (anular venta, ajuste manual de stock, venta
+ * con descuento) que ya no se escriben directo desde el cliente: `sales`,
+ * `sale_items`, `products` y `stock_movements` sólo tienen RLS por store_id,
+ * sin forma de distinguir qué empleado de la terminal está pidiendo el
+ * cambio (PIN verificado en el cliente, no una sesión propia por persona).
+ * Cualquiera con acceso al navegador podía, desde la consola, anular una
+ * venta, cargar un descuento o ajustar stock sin el permiso correspondiente
+ * — el vector clásico para tapar un faltante de caja o un robo de
+ * mercadería. La Edge Function verified-action corre con service_role recién
+ * después de confirmar con un PIN (de un Dueño/Superadmin, o de cualquier
+ * empleado con el permiso puntual) que la acción está autorizada.
+ */
+export const verifiedActionService = {
+  async refundSale(
+    saleId: string,
+    authPin: string,
+    refundReason?: string
+  ): Promise<
+    | {
+        success: true;
+        refundedBy: string;
+        refundedAt: string;
+        movements: StockMovement[];
+        shift: { id: string; cashSales: number; cardSales: number; transferSales: number; expectedCash: number } | null;
+      }
+    | { success: false; message: string }
+  > {
+    const { data, error } = await supabase.functions.invoke('verified-action', {
+      body: { action: 'refund_sale', authPin, saleId, refundReason },
+    });
 
     if (error) {
-      console.error('Error refunding sale:', error);
-      throw error;
+      console.error('Error invocando verified-action (refund_sale):', error);
+      return { success: false, message: 'No se pudo anular la venta. Probá de nuevo.' };
     }
+    if (!data?.success) {
+      return { success: false, message: data?.error || 'No se pudo anular la venta.' };
+    }
+    return {
+      success: true,
+      refundedBy: data.refundedBy,
+      refundedAt: data.refundedAt,
+      movements: (data.movements || []).map(mapStockMovementRow),
+      shift: data.shift
+        ? {
+            id: data.shift.id,
+            cashSales: Number(data.shift.cash_sales) || 0,
+            cardSales: Number(data.shift.card_sales) || 0,
+            transferSales: Number(data.shift.transfer_sales) || 0,
+            expectedCash: Number(data.shift.expected_cash) || 0,
+          }
+        : null,
+    };
+  },
+
+  async adjustStock(
+    productId: string,
+    authPin: string,
+    newStock: number,
+    adjustReason: string,
+    adjustType: 'AJUSTE_MERMA' | 'AJUSTE_CONTEO'
+  ): Promise<{ success: true; movement: StockMovement } | { success: false; message: string }> {
+    const { data, error } = await supabase.functions.invoke('verified-action', {
+      body: { action: 'adjust_stock', authPin, productId, newStock, adjustReason, adjustType },
+    });
+
+    if (error) {
+      console.error('Error invocando verified-action (adjust_stock):', error);
+      return { success: false, message: 'No se pudo ajustar el stock. Probá de nuevo.' };
+    }
+    if (!data?.success) {
+      return { success: false, message: data?.error || 'No se pudo ajustar el stock.' };
+    }
+    return { success: true, movement: mapStockMovementRow(data.movement) };
+  },
+
+  async createDiscountedSale(
+    sale: Sale,
+    authPin: string,
+    orderDiscountPercent: number
+  ): Promise<{ success: true } | { success: false; message: string }> {
+    const { data, error } = await supabase.functions.invoke('verified-action', {
+      body: { action: 'create_discounted_sale', authPin, sale: { ...sale, orderDiscountPercent } },
+    });
+
+    if (error) {
+      console.error('Error invocando verified-action (create_discounted_sale):', error);
+      return { success: false, message: 'No se pudo registrar la venta. Probá de nuevo.' };
+    }
+    if (!data?.success) {
+      return { success: false, message: data?.error || 'No se pudo registrar la venta.' };
+    }
+    return { success: true };
   },
 };
 

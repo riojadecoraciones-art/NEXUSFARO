@@ -26,9 +26,7 @@ export const HistoryView: React.FC = () => {
   const [selectedSale, setSelectedSale] = useState<Sale | null>(null);
   const [isRefundModalOpen, setIsRefundModalOpen] = useState<boolean>(false);
   const [refundReason, setRefundReason] = useState<string>('Devolución por cambio de producto');
-
-  const isOwner = currentUser?.role === 'DUEÑO';
-  const canRefund = isOwner || currentUser?.canRefund;
+  const [refundAuthPin, setRefundAuthPin] = useState<string>('');
 
   const filteredSales = sales.filter((sale) => {
     const matchesSearch =
@@ -42,19 +40,23 @@ export const HistoryView: React.FC = () => {
   });
 
   const handleOpenRefund = (sale: Sale) => {
-    if (!canRefund) {
-      showToast('No tienes permiso para anular ventas', 'error');
-      return;
-    }
+    // La autorización real la exige el PIN dentro del modal (verificado del
+    // lado del servidor) — cualquiera puede iniciar el pedido de devolución,
+    // pero necesita el PIN de alguien habilitado para confirmarlo.
     setSelectedSale(sale);
     setRefundReason('Devolución solicitada por el cliente');
+    setRefundAuthPin('');
     setIsRefundModalOpen(true);
   };
 
   const handleConfirmRefund = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedSale) return;
-    const success = await refundSale(selectedSale.id, refundReason);
+    if (!/^\d{4}$/.test(refundAuthPin)) {
+      showToast('Ingresá el PIN de autorización (4 dígitos)', 'error');
+      return;
+    }
+    const success = await refundSale(selectedSale.id, refundAuthPin, refundReason);
     if (success) {
       setIsRefundModalOpen(false);
       setSelectedSale(null);
@@ -202,7 +204,7 @@ export const HistoryView: React.FC = () => {
                             <Eye className="w-4 h-4" />
                           </button>
 
-                          {!isRefunded && canRefund && (
+                          {!isRefunded && (
                             <button
                               onClick={() => handleOpenRefund(sale)}
                               className="px-2 py-1 text-rose-600 hover:text-rose-800 hover:bg-rose-50 rounded-lg text-[11px] font-bold transition-colors flex items-center gap-1"
@@ -339,6 +341,22 @@ export const HistoryView: React.FC = () => {
                   value={refundReason}
                   onChange={(e) => setRefundReason(e.target.value)}
                   className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">
+                  PIN de autorización (Dueño o encargado con permiso de reembolso)
+                </label>
+                <input
+                  type="password"
+                  inputMode="numeric"
+                  maxLength={4}
+                  required
+                  placeholder="••••"
+                  value={refundAuthPin}
+                  onChange={(e) => setRefundAuthPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl text-base font-bold tracking-[0.3em] text-slate-900 focus:outline-none"
                 />
               </div>
 

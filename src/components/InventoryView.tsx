@@ -77,6 +77,7 @@ export const InventoryView: React.FC = () => {
   // Forms state
   const [adjustmentStock, setAdjustmentStock] = useState<string>('');
   const [adjustmentReason, setAdjustmentReason] = useState<string>('Corrección de conteo físico');
+  const [adjustmentAuthPin, setAdjustmentAuthPin] = useState<string>('');
   const [receiptUnits, setReceiptUnits] = useState<string>('');
   const [receiptSupplier, setReceiptSupplier] = useState<string>('');
   const [receiptCost, setReceiptCost] = useState<string>('');
@@ -143,6 +144,7 @@ export const InventoryView: React.FC = () => {
     setSelectedProduct(prod);
     setAdjustmentStock(prod.stock.toString());
     setAdjustmentReason('Corrección de conteo físico');
+    setAdjustmentAuthPin('');
     setIsAdjustModalOpen(true);
   };
 
@@ -171,7 +173,7 @@ export const InventoryView: React.FC = () => {
     setIsEditModalOpen(true);
   };
 
-  const handleSaveAdjustment = (e: React.FormEvent) => {
+  const handleSaveAdjustment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedProduct) return;
     const stockVal = parseFloat(adjustmentStock);
@@ -179,8 +181,17 @@ export const InventoryView: React.FC = () => {
       showToast('Ingresa una cantidad de stock válida', 'error');
       return;
     }
-    adjustStock(selectedProduct.id, stockVal, adjustmentReason);
-    setIsAdjustModalOpen(false);
+    if (!/^\d{4}$/.test(adjustmentAuthPin)) {
+      showToast('Ingresá el PIN de autorización (4 dígitos)', 'error');
+      return;
+    }
+    // No cierra el modal si falla: adjustStock ya muestra el error (PIN
+    // incorrecto o sin permiso) y así se puede reintentar sin volver a
+    // cargar todo el formulario.
+    const success = await adjustStock(selectedProduct.id, adjustmentAuthPin, stockVal, adjustmentReason);
+    if (success) {
+      setIsAdjustModalOpen(false);
+    }
   };
 
   const handleSaveReceipt = (e: React.FormEvent) => {
@@ -1116,6 +1127,25 @@ export const InventoryView: React.FC = () => {
                   <option value="Rotura o daño">Rotura o daño</option>
                   <option value="Consumo interno">Consumo interno</option>
                 </select>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">
+                  PIN de autorización (Dueño o encargado con permiso de inventario)
+                </label>
+                <input
+                  type="password"
+                  inputMode="numeric"
+                  maxLength={4}
+                  required
+                  placeholder="••••"
+                  value={adjustmentAuthPin}
+                  onChange={(e) => setAdjustmentAuthPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl text-base font-bold tracking-[0.3em] text-slate-900 focus:outline-none focus:border-blue-500"
+                />
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Si no tenés permiso de inventario, pedile a quien sí lo tenga que ingrese su PIN acá.
+                </p>
               </div>
 
               <div className="pt-3 border-t border-slate-100 flex items-center justify-between">

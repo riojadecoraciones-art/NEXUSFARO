@@ -46,6 +46,7 @@ import {
   storeSettingsService,
   storeTenantService,
   supplierService,
+  verifiedActionService,
 } from '../services/supabaseService';
 
 interface AppContextType {
@@ -122,7 +123,13 @@ interface AppContextType {
   products: Product[];
   categories: string[];
   stockMovements: StockMovement[];
-  adjustStock: (productId: string, newStock: number, reason: string, type?: 'AJUSTE_MERMA' | 'AJUSTE_CONTEO') => Promise<void>;
+  adjustStock: (
+    productId: string,
+    authPin: string,
+    newStock: number,
+    reason: string,
+    type?: 'AJUSTE_MERMA' | 'AJUSTE_CONTEO'
+  ) => Promise<boolean>;
   addStockReceipt: (
     productId: string,
     quantityToAdd: number,
@@ -170,12 +177,15 @@ interface AppContextType {
   parkCurrentTicket: (customerName?: string, notes?: string) => Promise<boolean>;
   resumeParkedTicket: (ticketId: string) => Promise<void>;
   deleteParkedTicket: (ticketId: string) => Promise<void>;
-  confirmSale: (payment: {
-    method: PaymentMethodType;
-    breakdown: PaymentDetail[];
-    amountReceived?: number;
-    notes?: string;
-  }) => Promise<Sale | null>;
+  confirmSale: (
+    payment: {
+      method: PaymentMethodType;
+      breakdown: PaymentDetail[];
+      amountReceived?: number;
+      notes?: string;
+    },
+    discountAuthPin?: string
+  ) => Promise<Sale | null>;
 
   // Cash Register & Shifts
   activeShift: CashShift | null;
@@ -187,7 +197,7 @@ interface AppContextType {
 
   // Sales History & Refunds
   sales: Sale[];
-  refundSale: (saleId: string, reason?: string) => Promise<boolean>;
+  refundSale: (saleId: string, authPin: string, reason?: string) => Promise<boolean>;
 
   // Gastos Fijos & Operativos (Para Dueño)
   expenses: FixedExpense[];
@@ -1910,12 +1920,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // CONFIRM SALE (Core atomic flow connected to Supabase)
   // ==========================================
 
-  const confirmSale = async (payment: {
-    method: PaymentMethodType;
-    breakdown: PaymentDetail[];
-    amountReceived?: number;
-    notes?: string;
-  }): Promise<Sale | null> => {
+  const confirmSale = async (
+    payment: {
+      method: PaymentMethodType;
+      breakdown: PaymentDetail[];
+      amountReceived?: number;
+      notes?: string;
+    },
+    discountAuthPin?: string
+  ): Promise<Sale | null> => {
     if (blockIfImpersonating()) return null;
     if (!currentUser) {
       showToast('Debes iniciar sesión para cobrar', 'error');
@@ -2097,17 +2110,36 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // la caja mostraba "Venta registrada", vaciaba el carrito y seguía, aunque
     // no se hubiera guardado nada. Ahora, si la venta no se guarda, no hay venta:
     // el carrito queda intacto para poder reintentar el cobro.
-    try {
-      await saleService.create(newSale);
-    } catch (dbErr) {
-      console.error('Error guardando la venta en Supabase:', dbErr);
-      showToast(
-        'LA VENTA NO SE GUARDÓ. No entregues el producto: revisá la conexión y volvé a cobrar.',
-        'error',
-        { title: 'Error al registrar la venta', isPersistent: true }
-      );
-      sounds.playErrorBeep();
-      return null;
+    //
+    // Con descuento, la venta la crea verified-action (Edge Function) en vez
+    // del cliente directo: RLS sólo mira store_id, así que cualquiera con
+    // acceso a la terminal podía cargar cualquier descuento sin el permiso
+    // correspondiente — el mismo hueco que refundSale/adjustStock. Sin
+    // descuento no hay nada que autorizar, así que sigue el camino directo
+    // de siempre (más rápido, sin depender de una Edge Function en cada venta).
+    if (newSale.discountTotal > 0) {
+      if (!discountAuthPin) {
+        showToast('Este descuento necesita autorización — ingresá un PIN habilitado.', 'error');
+        return null;
+      }
+      const result = await verifiedActionService.createDiscountedSale(newSale, discountAuthPin, orderDiscountPercent);
+      if (result.success === false) {
+        showToast(result.message, 'error');
+        return null;
+      }
+    } else {
+      try {
+        await saleService.create(newSale);
+      } catch (dbErr) {
+        console.error('Error guardando la venta en Supabase:', dbErr);
+        showToast(
+          'LA VENTA NO SE GUARDÓ. No entregues el producto: revisá la conexión y volvé a cobrar.',
+          'error',
+          { title: 'Error al registrar la venta', isPersistent: true }
+        );
+        sounds.playErrorBeep();
+        return null;
+      }
     }
 
     // 3.b Efectos secundarios — la venta YA está registrada.
@@ -2192,13 +2224,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // REFUND / ANULACIÓN DE VENTA
   // ==========================================
 
-  const refundSale = async (saleId: string, reason?: string): Promise<boolean> => {
+  /**
+   * Encontrado en un paneo de seguridad: `sales`/`stock_movements`/`cash_shifts`
+   * sólo tienen RLS por store_id — como todos los empleados de una terminal
+   * comparten la misma sesión, la base no podía distinguir a un Cajero sin
+   * permiso de reembolso del Dueño. Ya no se decide acá si `currentUser`
+   * puede reembolsar: cualquiera puede iniciar la anulación, pero requiere
+   * un `authPin` (propio si ya tiene el permiso, o de un Dueño/encargado que
+   * autorice) que la Edge Function verified-action confirma del lado del
+   * servidor antes de tocar nada. El reintegro de stock y el ajuste de caja
+   * los hace y devuelve el servidor — acá sólo se reflejan en memoria.
+   */
+  const refundSale = async (saleId: string, authPin: string, reason?: string): Promise<boolean> => {
     if (blockIfImpersonating()) return false;
     if (!currentUser) return false;
-    if (currentUser.role !== 'DUEÑO' && !currentUser.canRefund) {
-      showToast('No tienes permiso para realizar devoluciones o anular ventas', 'error');
-      return false;
-    }
 
     const sale = sales.find((s) => s.id === saleId);
     if (!sale) {
@@ -2210,94 +2249,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return false;
     }
 
-    const timestamp = new Date().toISOString();
-
-    // 1. Restock products
-    const updatedProducts = [...products];
-    const newStockMovements: StockMovement[] = [];
-
-    sale.items.forEach((item) => {
-      const idx = updatedProducts.findIndex((p) => p.id === item.productId);
-      if (idx >= 0) {
-        const prevStock = updatedProducts[idx].stock;
-        const newStock = prevStock + item.quantity;
-        updatedProducts[idx] = {
-          ...updatedProducts[idx],
-          stock: newStock,
-        };
-
-        newStockMovements.push({
-          id: `stk-ref-${Date.now()}-${item.productId}`,
-          productId: item.productId,
-          productName: item.productName,
-          timestamp,
-          type: 'DEVOLUCION',
-          quantityDelta: item.quantity,
-          previousStock: prevStock,
-          newStock,
-          reason: `Devolución ${sale.ticketNumber}: ${reason || 'Solicitud cliente'}`,
-          userName: currentUser.name,
-        });
-      }
-    });
-
-    // 2. Adjust shift totals if active
-    let cashRefund = 0;
-    let cardRefund = 0;
-    let transferRefund = 0;
-
-    if (activeShift) {
-      sale.paymentBreakdown.forEach((p) => {
-        if (p.method === 'EFECTIVO') cashRefund += p.amount;
-        else if (p.method === 'TARJETA') cardRefund += p.amount;
-        else if (p.method === 'TRANSFERENCIA_QR') transferRefund += p.amount;
-      });
+    const result = await verifiedActionService.refundSale(saleId, authPin, reason);
+    if (result.success === false) {
+      showToast(result.message, 'error');
+      return false;
     }
 
-    // 3. Persist refund to Supabase
-    try {
-      await Promise.all([
-        saleService.refund(saleId, currentUser.name, timestamp),
-        ...sale.items.map((item) => {
-          const p = updatedProducts.find((x) => x.id === item.productId);
-          return p ? productService.updateStock(p.id, p.stock) : Promise.resolve();
-        }),
-        ...newStockMovements.map((mov) => stockMovementService.create(mov)),
-        activeShift
-          ? cashShiftService.updateShift(activeShift.id, {
-              cashSales: Math.max(0, activeShift.cashSales - cashRefund),
-              cardSales: Math.max(0, activeShift.cardSales - cardRefund),
-              transferSales: Math.max(0, activeShift.transferSales - transferRefund),
-              expectedCash:
-                activeShift.initialCash +
-                Math.max(0, activeShift.cashSales - cashRefund) +
-                activeShift.totalIn -
-                activeShift.totalOut,
-            })
-          : Promise.resolve(),
-      ]);
-    } catch (e) {
-      console.error('Error refunding sale in Supabase:', e);
-    }
+    setProducts((prev) =>
+      prev.map((p) => {
+        const mov = result.movements.find((m) => m.productId === p.id);
+        return mov ? { ...p, stock: mov.newStock } : p;
+      })
+    );
+    setStockMovements((prev) => [...result.movements, ...prev]);
 
-    setProducts(updatedProducts);
-    setStockMovements((prev) => [...newStockMovements, ...prev]);
-
-    if (activeShift) {
-      setActiveShift((prev) => {
-        if (!prev) return null;
-        const newCashSales = Math.max(0, prev.cashSales - cashRefund);
-        const newCardSales = Math.max(0, prev.cardSales - cardRefund);
-        const newTransferSales = Math.max(0, prev.transferSales - transferRefund);
-        const newExpected = prev.initialCash + newCashSales + prev.totalIn - prev.totalOut;
-        return {
-          ...prev,
-          cashSales: newCashSales,
-          cardSales: newCardSales,
-          transferSales: newTransferSales,
-          expectedCash: newExpected,
-        };
-      });
+    if (result.shift) {
+      const shift = result.shift;
+      setActiveShift((prev) => (prev && prev.id === shift.id ? { ...prev, ...shift } : prev));
     }
 
     setSales((prev) =>
@@ -2306,8 +2274,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           ? {
               ...s,
               status: 'ANULADA_DEVUELTA',
-              refundedAt: timestamp,
-              refundedBy: currentUser.name,
+              refundedAt: result.refundedAt,
+              refundedBy: result.refundedBy,
               notes: reason ? `${s.notes ? s.notes + ' | ' : ''}Devolución: ${reason}` : s.notes,
             }
           : s
@@ -2322,46 +2290,34 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // INVENTORY & PRODUCT MANAGEMENT
   // ==========================================
 
+  /**
+   * Mismo criterio que refundSale: `products`/`stock_movements` sólo tienen
+   * RLS por store_id, así que cualquiera con acceso a la terminal podía
+   * ajustar stock sin el permiso de inventario — el vector clásico para
+   * tapar un robo de mercadería. Ahora requiere un `authPin` que
+   * verified-action confirma del lado del servidor.
+   */
   const adjustStock = async (
     productId: string,
+    authPin: string,
     newStock: number,
     reason: string,
     type: 'AJUSTE_MERMA' | 'AJUSTE_CONTEO' = 'AJUSTE_CONTEO'
-  ) => {
-    if (!currentUser) return;
-    if (currentUser.role !== 'DUEÑO' && !currentUser.canManageInventory) {
-      showToast('No tienes permiso para ajustar inventario', 'error');
-      return;
-    }
+  ): Promise<boolean> => {
+    if (!currentUser) return false;
 
     const prod = products.find((p) => p.id === productId);
-    if (!prod) return;
+    if (!prod) return false;
 
-    const previousStock = prod.stock;
     const safeNewStock = Math.max(0, newStock);
-    const delta = safeNewStock - previousStock;
 
-    const movement: StockMovement = {
-      id: `stk-adj-${Date.now()}`,
-      productId,
-      productName: prod.name,
-      timestamp: new Date().toISOString(),
-      type,
-      quantityDelta: delta,
-      previousStock,
-      newStock: safeNewStock,
-      reason,
-      userName: currentUser.name,
-    };
-
-    try {
-      await Promise.all([
-        productService.updateStock(productId, safeNewStock),
-        stockMovementService.create(movement),
-      ]);
-    } catch (e) {
-      console.error('Error adjusting stock in Supabase:', e);
+    const result = await verifiedActionService.adjustStock(productId, authPin, safeNewStock, reason, type);
+    if (result.success === false) {
+      showToast(result.message, 'error');
+      return false;
     }
+
+    const movement = result.movement;
 
     setProducts((prev) =>
       prev.map((p) => (p.id === productId ? { ...p, stock: safeNewStock } : p))
