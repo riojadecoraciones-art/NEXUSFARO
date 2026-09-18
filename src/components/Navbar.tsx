@@ -17,6 +17,8 @@ import {
   KeyRound,
   Shield,
   Database,
+  Maximize2,
+  Minimize2,
 } from 'lucide-react';
 import { formatARS } from '../utils/currency';
 import { UserAvatar } from './UserAvatar';
@@ -56,6 +58,28 @@ export const Navbar: React.FC<NavbarProps> = ({
   const [internalTerm, setInternalTerm] = useState<string>('');
   const [isUserMenuOpen, setIsUserMenuOpen] = useState<boolean>(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
+
+  // Pantalla completa de verdad (Fullscreen API), no sólo maximizar la
+  // ventana: en la mayoría de los sistemas esto tapa además la barra de
+  // tareas del equipo, para que el mostrador se vea como una aplicación
+  // propia y no como una ventana de navegador más. El estado se sincroniza
+  // con el evento del navegador (no sólo con el click del botón) porque
+  // también se puede salir con Esc.
+  const [isFullscreen, setIsFullscreen] = useState<boolean>(() => Boolean(document.fullscreenElement));
+
+  useEffect(() => {
+    const handleFullscreenChange = () => setIsFullscreen(Boolean(document.fullscreenElement));
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
+
+  const toggleFullscreen = () => {
+    if (document.fullscreenElement) {
+      document.exitFullscreen().catch((err) => console.error('Error al salir de pantalla completa:', err));
+    } else {
+      document.documentElement.requestFullscreen().catch((err) => console.error('Error al entrar en pantalla completa:', err));
+    }
+  };
 
   const currentTerm = controlledSearchTerm !== undefined ? controlledSearchTerm : internalTerm;
 
@@ -206,6 +230,15 @@ export const Navbar: React.FC<NavbarProps> = ({
               ? `Caja Abierta • ${formatARS(activeShift.expectedCash)}`
               : 'Caja Cerrada (Abrir)'}
           </span>
+        </button>
+
+        {/* Fullscreen Toggle Button */}
+        <button
+          onClick={toggleFullscreen}
+          className="relative p-2 rounded-xl transition-all text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+          title={isFullscreen ? 'Salir de pantalla completa' : 'Pantalla completa (oculta la barra de tareas)'}
+        >
+          {isFullscreen ? <Minimize2 className="w-5 h-5" /> : <Maximize2 className="w-5 h-5" />}
         </button>
 
         {/* Persistent Notifications Drawer Trigger Button */}
