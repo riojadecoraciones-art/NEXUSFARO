@@ -21,13 +21,75 @@ import {
 import { User, UserRole } from '../types';
 import { UserAvatar } from './UserAvatar';
 
+// Respaldo para una categoría que todavía no llegó a categoryTaxRates.
+// Coincide con el default real de categories.tax_percent en la base.
+const DEFAULT_TAX_PERCENT_FALLBACK = 21;
+
+const CategoryTaxRateRow: React.FC<{
+  category: string;
+  value: number;
+  onSave: (name: string, taxPercent: number) => Promise<boolean>;
+}> = ({ category, value, onSave }) => {
+  const [draft, setDraft] = useState<string>(value.toString());
+  const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    setDraft(value.toString());
+  }, [value]);
+
+  const isDirty = draft.trim() !== '' && draft !== value.toString();
+
+  const handleSave = async () => {
+    const parsed = parseFloat(draft);
+    if (isNaN(parsed) || parsed < 0 || parsed > 100) return;
+    setIsSaving(true);
+    const ok = await onSave(category, parsed);
+    setIsSaving(false);
+    if (!ok) setDraft(value.toString());
+  };
+
+  return (
+    <div className="flex items-center justify-between gap-2 p-2.5 bg-slate-50 rounded-xl border border-slate-200">
+      <span className="font-bold text-slate-700 text-xs truncate">{category}</span>
+      <div className="flex items-center gap-1.5 shrink-0">
+        <div className="relative">
+          <input
+            type="number"
+            step="0.1"
+            min="0"
+            max="100"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleSave()}
+            disabled={isSaving}
+            className="w-20 pl-2 pr-5 py-1.5 border border-slate-300 rounded-lg text-xs font-bold font-mono text-right focus:outline-none focus:border-blue-500 disabled:opacity-50"
+          />
+          <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-[10px]">%</span>
+        </div>
+        {isDirty && (
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={isSaving}
+            title="Guardar"
+            className="p-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:opacity-50 shrink-0"
+          >
+            <CheckCircle2 className="w-3.5 h-3.5" />
+          </button>
+        )}
+      </div>
+    </div>
+  );
+};
+
 export const SettingsView: React.FC = () => {
   const {
     users,
     currentUser,
     showToast,
-    taxPercent,
-    setTaxPercent,
+    categories,
+    categoryTaxRates,
+    updateCategoryTaxRate,
     addUser,
     storeInfo,
     updateStoreInfo,
@@ -48,7 +110,6 @@ export const SettingsView: React.FC = () => {
   const [phone, setPhone] = useState<string>(storeInfo?.phone || '');
   const [email, setEmail] = useState<string>(storeInfo?.email || '');
   const [receiptFooter, setReceiptFooter] = useState<string>(storeInfo?.receiptFooter || '');
-  const [storeTaxPercent, setStoreTaxPercent] = useState<string>(taxPercent.toString());
 
   useEffect(() => {
     if (!storeInfo) return;
@@ -80,11 +141,6 @@ export const SettingsView: React.FC = () => {
 
   const handleSaveStore = (e: React.FormEvent) => {
     e.preventDefault();
-    const val = parseFloat(storeTaxPercent);
-    if (!isNaN(val) && val >= 0 && val <= 100) {
-      setTaxPercent(val);
-    }
-    
     updateStoreInfo({
       storeName: storeName.trim() || 'FARO POS',
       branchName: branchName.trim() || 'Sucursal Principal',
@@ -253,32 +309,15 @@ export const SettingsView: React.FC = () => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="font-bold text-slate-700 block mb-1">Pie de Ticket Térmico</label>
-                  <input
-                    type="text"
-                    value={receiptFooter}
-                    onChange={(e) => setReceiptFooter(e.target.value)}
-                    placeholder="¡Gracias por su compra!"
-                    className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs focus:outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="font-bold text-slate-700 block mb-1">Tasa de IVA Predeterminada (%)</label>
-                  <div className="relative">
-                    <input
-                      type="number"
-                      step="0.1"
-                      min="0"
-                      max="100"
-                      value={storeTaxPercent}
-                      onChange={(e) => setStoreTaxPercent(e.target.value)}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-bold font-mono focus:outline-none"
-                    />
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold">%</span>
-                  </div>
-                </div>
+              <div>
+                <label className="font-bold text-slate-700 block mb-1">Pie de Ticket Térmico</label>
+                <input
+                  type="text"
+                  value={receiptFooter}
+                  onChange={(e) => setReceiptFooter(e.target.value)}
+                  placeholder="¡Gracias por su compra!"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs focus:outline-none"
+                />
               </div>
 
               <div className="pt-2 text-right">
@@ -464,6 +503,37 @@ export const SettingsView: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* IVA por Categoría */}
+      {isOwner && (
+        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+          <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+            <div className="flex items-center gap-2.5">
+              <Percent className="w-5 h-5 text-blue-600" />
+              <h3 className="font-extrabold text-base text-slate-900">IVA por Categoría</h3>
+            </div>
+            <span className="text-[10px] font-bold px-2 py-0.5 bg-blue-50 text-blue-700 rounded-md border border-blue-200">
+              Se aplica en el carrito
+            </span>
+          </div>
+
+          <p className="text-xs text-slate-500 leading-relaxed">
+            Cada categoría tiene su propia tasa de IVA. Los productos la heredan de su categoría,
+            salvo que tengan una excepción puntual cargada en su ficha (Inventario).
+          </p>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            {categories.map((cat) => (
+              <CategoryTaxRateRow
+                key={cat}
+                category={cat}
+                value={categoryTaxRates[cat] ?? DEFAULT_TAX_PERCENT_FALLBACK}
+                onSave={updateCategoryTaxRate}
+              />
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* MODAL: CREAR CAJERO */}
       {isAddUserOpen && (

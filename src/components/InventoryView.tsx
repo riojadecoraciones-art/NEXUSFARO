@@ -28,10 +28,15 @@ import { ProductImage } from './ProductImage';
 import { ProductImageSelector } from './ProductImageSelector';
 import { ImportProductsModal } from './ImportProductsModal';
 
+// Respaldo para una categoría que todavía no llegó a categoryTaxRates.
+// Coincide con el default real de categories.tax_percent en la base.
+const DEFAULT_TAX_PERCENT_FALLBACK = 21;
+
 export const InventoryView: React.FC = () => {
   const {
     products,
     categories,
+    categoryTaxRates,
     adjustStock,
     addStockReceipt,
     quickRestockProduct,
@@ -96,6 +101,7 @@ export const InventoryView: React.FC = () => {
   const [newProdUnitType, setNewProdUnitType] = useState<ProductUnitType>('UNIDAD');
   const [newProdSupplierId, setNewProdSupplierId] = useState<string>('');
   const [newProdExpirationDate, setNewProdExpirationDate] = useState<string>('');
+  const [newProdTaxPercent, setNewProdTaxPercent] = useState<string>('');
 
   // Edit product form
   const [editProdName, setEditProdName] = useState<string>('');
@@ -109,6 +115,7 @@ export const InventoryView: React.FC = () => {
   const [editProdUnitType, setEditProdUnitType] = useState<ProductUnitType>('UNIDAD');
   const [editProdSupplierId, setEditProdSupplierId] = useState<string>('');
   const [editProdExpirationDate, setEditProdExpirationDate] = useState<string>('');
+  const [editProdTaxPercent, setEditProdTaxPercent] = useState<string>('');
 
   // Category Management Form
   const [newCategoryName, setNewCategoryName] = useState<string>('');
@@ -170,6 +177,7 @@ export const InventoryView: React.FC = () => {
     setEditProdUnitType(prod.unitType);
     setEditProdSupplierId(prod.supplierId || '');
     setEditProdExpirationDate(prod.expirationDate || '');
+    setEditProdTaxPercent(prod.taxPercent !== undefined ? prod.taxPercent.toString() : '');
     setIsEditModalOpen(true);
   };
 
@@ -224,6 +232,16 @@ export const InventoryView: React.FC = () => {
       return;
     }
 
+    let newProdTaxOverride: number | undefined;
+    if (newProdTaxPercent.trim() !== '') {
+      const parsed = parseFloat(newProdTaxPercent);
+      if (isNaN(parsed) || parsed < 0 || parsed > 100) {
+        showToast('El IVA del producto tiene que ser un número entre 0 y 100 (o dejalo vacío)', 'error');
+        return;
+      }
+      newProdTaxOverride = parsed;
+    }
+
     addProduct({
       name: newProdName,
       sku: newProdSku,
@@ -237,6 +255,7 @@ export const InventoryView: React.FC = () => {
       unitType: newProdUnitType,
       supplierId: newProdSupplierId || undefined,
       expirationDate: newProdExpirationDate || undefined,
+      taxPercent: newProdTaxOverride,
     });
 
     setIsAddModalOpen(false);
@@ -248,6 +267,7 @@ export const InventoryView: React.FC = () => {
     setNewProdStock('');
     setNewProdSupplierId('');
     setNewProdExpirationDate('');
+    setNewProdTaxPercent('');
   };
 
   const handleSaveEditProduct = (e: React.FormEvent) => {
@@ -256,6 +276,20 @@ export const InventoryView: React.FC = () => {
     if (!editProdName || !editProdSku) {
       showToast('Nombre y SKU son requeridos', 'error');
       return;
+    }
+
+    // null explícito (no undefined) cuando queda vacío: si el producto ya
+    // tenía una excepción cargada y el Dueño la borra del formulario, tiene
+    // que limpiarse de verdad en la base y volver a heredar el IVA de la
+    // categoría, no quedarse con el valor viejo. Ver ProductUpdateInput.
+    let editProdTaxOverride: number | null = null;
+    if (editProdTaxPercent.trim() !== '') {
+      const parsed = parseFloat(editProdTaxPercent);
+      if (isNaN(parsed) || parsed < 0 || parsed > 100) {
+        showToast('El IVA del producto tiene que ser un número entre 0 y 100 (o dejalo vacío)', 'error');
+        return;
+      }
+      editProdTaxOverride = parsed;
     }
 
     updateProduct(selectedProduct.id, {
@@ -270,6 +304,7 @@ export const InventoryView: React.FC = () => {
       unitType: editProdUnitType,
       supplierId: editProdSupplierId || undefined,
       expirationDate: editProdExpirationDate || undefined,
+      taxPercent: editProdTaxOverride,
     });
 
     setIsEditModalOpen(false);
@@ -957,6 +992,26 @@ export const InventoryView: React.FC = () => {
                 </div>
               )}
 
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">IVA de este producto (Opcional)</label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    max="100"
+                    value={editProdTaxPercent}
+                    onChange={(e) => setEditProdTaxPercent(e.target.value)}
+                    placeholder={`Hereda ${categoryTaxRates[editProdCategory] ?? DEFAULT_TAX_PERCENT_FALLBACK}% de "${editProdCategory}"`}
+                    className="w-full px-3 py-2 pr-7 border border-slate-300 rounded-xl text-xs font-bold font-mono focus:outline-none focus:border-blue-500"
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold">%</span>
+                </div>
+                <p className="text-[11px] text-slate-400 mt-1">
+                  Dejalo vacío para usar el IVA de la categoría. Cargalo sólo si este producto es una excepción puntual.
+                </p>
+              </div>
+
               {storeFeatures.tracksExpiration && (
                 <div>
                   <label className="text-xs font-bold text-slate-700 block mb-1">
@@ -1378,6 +1433,26 @@ export const InventoryView: React.FC = () => {
                   </select>
                 </div>
               )}
+
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">IVA de este producto (Opcional)</label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    max="100"
+                    value={newProdTaxPercent}
+                    onChange={(e) => setNewProdTaxPercent(e.target.value)}
+                    placeholder={`Hereda ${categoryTaxRates[newProdCategory] ?? DEFAULT_TAX_PERCENT_FALLBACK}% de "${newProdCategory}"`}
+                    className="w-full px-3 py-2 pr-7 border border-slate-300 rounded-xl text-xs font-bold font-mono focus:outline-none focus:border-blue-500"
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold">%</span>
+                </div>
+                <p className="text-[11px] text-slate-400 mt-1">
+                  Dejalo vacío para usar el IVA de la categoría. Cargalo sólo si este producto es una excepción puntual.
+                </p>
+              </div>
 
               {storeFeatures.tracksExpiration && (
                 <div>

@@ -26,6 +26,7 @@ import {
   UNIT_TYPE_LABELS,
   isFractionalUnit,
   Supplier,
+  ProductUpdateInput,
 } from '../types';
 import { SEED_USERS, SEED_PRODUCTS, SEED_SALES, SEED_ALERTS } from '../mockData';
 import { sounds } from '../utils/soundEffects';
@@ -143,11 +144,14 @@ interface AppContextType {
     rows: ProductImportRow[],
     onProgress?: (done: number, total: number) => void
   ) => Promise<ProductImportResult>;
-  updateProduct: (id: string, productData: Partial<Product>) => Promise<void>;
+  updateProduct: (id: string, productData: ProductUpdateInput) => Promise<void>;
   deleteProduct: (id: string) => Promise<boolean>;
   addCategory: (name: string) => Promise<boolean>;
   updateCategory: (oldName: string, newName: string) => Promise<boolean>;
   deleteCategory: (name: string, fallbackCategory?: string) => Promise<boolean>;
+  /** IVA por categoría — clave es el nombre tal cual está en `categories`. */
+  categoryTaxRates: Record<string, number>;
+  updateCategoryTaxRate: (name: string, taxPercent: number) => Promise<boolean>;
   lowStockProducts: Product[];
   /** Sólo productos de comercios con storeFeatures.tracksExpiration activo: vencidos o por vencer. */
   expiringProducts: Product[];
@@ -165,8 +169,6 @@ interface AppContextType {
   setCartItemQuantity: (productId: string, quantity: number) => void;
   removeFromCart: (productId: string) => void;
   clearCart: () => void;
-  taxPercent: number;
-  setTaxPercent: (percent: number) => void;
   orderDiscountPercent: number;
   setOrderDiscountPercent: (percent: number) => void;
   cartSubtotal: number;
@@ -302,6 +304,12 @@ const EXPIRATION_WARNING_DAYS = 7;
 // staleCostProducts.
 const COST_REVIEW_STALE_DAYS = 20;
 
+// Respaldo del cálculo del carrito para una categoría que todavía no
+// llegó a categoryTaxRates (p.ej. justo después de crearla, antes de que
+// la carga inicial la traiga de nuevo). Coincide con el default real de
+// la columna categories.tax_percent — nunca debería notarse en la práctica.
+const DEFAULT_TAX_PERCENT = 21;
+
 const MASTER_NOT_CONFIGURED_MESSAGE = MASTER_PASSWORD_HASH
   ? 'VITE_MASTER_PASSWORD_HASH está cargado pero no tiene el formato esperado. Esto pasa cuando los "$" del hash no quedaron escapados en .env.local: Vite los interpreta como referencias a otra variable y lo corta en silencio. Volvé a correr "npm run hash-password" y pegá la línea completa que imprime (ya sale con los "$" escapados).'
   : 'El acceso maestro no está configurado en esta instalación. Generá el hash con "npm run hash-password" y cargá VITE_MASTER_PASSWORD_HASH en .env.local.';
@@ -347,6 +355,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     'Accesorios',
     'Blanquería',
   ]);
+  // IVA por categoría — arranca vacío; se completa con lo que devuelva la
+  // base en la carga inicial (ver loadAllDataFromSupabase). No hace falta
+  // sembrar nada acá porque cada categoría ya nace con tax_percent=21 en
+  // la propia tabla (default de la columna).
+  const [categoryTaxRates, setCategoryTaxRates] = useState<Record<string, number>>({});
   const [stockMovements, setStockMovements] = useState<StockMovement[]>([]);
 
   // 3. Sales & History
@@ -360,24 +373,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // 5. Cart & Parked
   const [posSearchTerm, setPosSearchTerm] = useState<string>('');
   const [cart, setCart] = useState<CartItem[]>([]);
-  const [taxPercent, setTaxPercentState] = useState<number>(() => {
-    try {
-      const saved = localStorage.getItem('nexus_tax_percent');
-      return saved !== null ? parseFloat(saved) : 21;
-    } catch {
-      return 21;
-    }
-  });
-
-  const setTaxPercent = useCallback((percent: number) => {
-    const val = Math.max(0, Math.min(100, isNaN(percent) ? 0 : percent));
-    setTaxPercentState(val);
-    try {
-      localStorage.setItem('nexus_tax_percent', String(val));
-    } catch (e) {
-      console.error(e);
-    }
-  }, []);
 
   const [orderDiscountPercent, setOrderDiscountPercent] = useState<number>(0);
   const [parkedTickets, setParkedTickets] = useState<ParkedTicket[]>([]);
@@ -605,7 +600,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
 
       // 2. Categories & Products
-      const [fetchedCategories, fetchedProducts] = await Promise.all([
+      const [fetchedCategories, fetchedProducts, fetchedCategoryTaxRates] = await Promise.all([
         categoryService.getAll().catch((err) => {
           console.warn('Error loading categories:', err);
           return ['General', 'Cortinería', 'Telas & Tapicería', 'Decoración', 'Accesorios', 'Blanquería'];
@@ -614,10 +609,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           console.warn('Error loading products:', err);
           return [];
         }),
+        categoryService.getAllTaxRates().catch((err) => {
+          console.warn('Error loading category tax rates:', err);
+          return {};
+        }),
       ]);
 
       setCategories(fetchedCategories);
       setProducts(fetchedProducts);
+      setCategoryTaxRates(fetchedCategoryTaxRates);
 
       // 3. Sales, Stock movements & Parked tickets
       const [fetchedSales, fetchedStockMovements, fetchedParked] = await Promise.all([
@@ -1703,8 +1703,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }, 0);
 
     const orderDisc = (rawSubtotal * orderDiscountPercent) / 100;
-    const subtotalAfterDisc = Math.max(0, rawSubtotal - orderDisc);
-    const tax = subtotalAfterDisc * (taxPercent / 100);
+
+    // El IVA es por ítem (el de su categoría, salvo que el producto tenga
+    // su propia excepción) — ya no un único porcentaje para todo el
+    // carrito. El descuento de la orden se reparte proporcional entre los
+    // ítems antes de aplicar la tasa de cada uno: si todas las categorías
+    // tienen el mismo IVA, esto da exactamente lo mismo que antes.
+    const orderDiscFactor = rawSubtotal > 0 ? 1 - orderDisc / rawSubtotal : 1;
+    let subtotalAfterDisc = 0;
+    let tax = 0;
+    cart.forEach((item) => {
+      const itemPrice = item.product.salePrice * item.quantity;
+      const itemDisc = item.discountPercent ? (itemPrice * item.discountPercent) / 100 : (item.discountAmount || 0);
+      const itemNet = Math.max(0, itemPrice - itemDisc) * orderDiscFactor;
+      const itemRate = item.product.taxPercent ?? categoryTaxRates[item.product.category] ?? DEFAULT_TAX_PERCENT;
+      subtotalAfterDisc += itemNet;
+      tax += itemNet * (itemRate / 100);
+    });
+
     const total = subtotalAfterDisc + tax;
 
     return {
@@ -1713,7 +1729,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       cartTax: Number(tax.toFixed(2)),
       cartTotal: Number(total.toFixed(2)),
     };
-  }, [cart, orderDiscountPercent, taxPercent]);
+  }, [cart, orderDiscountPercent, categoryTaxRates]);
 
   // Cart Actions
   /**
@@ -2603,7 +2619,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   };
 
-  const updateProduct = async (id: string, productData: Partial<Product>) => {
+  const updateProduct = async (id: string, productData: ProductUpdateInput) => {
     if (blockIfImpersonating()) return;
     // Si el costo cambia de verdad (no sólo "vino incluido en el
     // formulario" — el modal de Editar Producto siempre lo manda,
@@ -2612,7 +2628,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // cualquier otro motivo (nombre, categoría...) reinicie la ventana de
     // aviso de "hace cuánto no se revisa" sin que el costo se haya tocado.
     const existing = products.find((p) => p.id === id);
-    const dataToSave: Partial<Product> =
+    const dataToSave: ProductUpdateInput =
       productData.costPrice !== undefined && existing && productData.costPrice !== existing.costPrice
         ? { ...productData, costUpdatedAt: new Date().toISOString() }
         : productData;
@@ -2638,7 +2654,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setProducts((prev) =>
       prev.map((p) => {
         if (p.id === id) {
-          const updated = { ...p, ...dataToSave };
+          // null en dataToSave.taxPercent pide "volver a heredar el IVA de
+          // la categoría" — en el Product en memoria eso es undefined, no
+          // null (ver ProductUpdateInput).
+          const updated: Product = {
+            ...p,
+            ...dataToSave,
+            taxPercent:
+              dataToSave.taxPercent === null
+                ? undefined
+                : dataToSave.taxPercent !== undefined
+                ? dataToSave.taxPercent
+                : p.taxPercent,
+          };
           if (updated.stock <= updated.minStock) {
             if (p.stock > p.minStock) {
               showStockAlertToast(updated, updated.stock);
@@ -2749,6 +2777,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setAlerts((prev) =>
       prev.map((a) => (a.category === oldName ? { ...a, category: trimmed } : a))
     );
+    // El IVA vive en la misma fila (sólo cambia su nombre), así que la
+    // tasa viaja con ella — se pierde la clave vieja para no dejar un
+    // nombre fantasma en categoryTaxRates.
+    setCategoryTaxRates((prev) => {
+      if (!(oldName in prev)) return prev;
+      const { [oldName]: rate, ...rest } = prev;
+      return { ...rest, [trimmed]: rate };
+    });
 
     showToast(`Categoría "${oldName}" renombrada a "${trimmed}"`, 'success');
     return true;
@@ -2777,8 +2813,39 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setProducts((prev) =>
       prev.map((p) => (p.category === name ? { ...p, category: targetFallback } : p))
     );
+    setCategoryTaxRates((prev) => {
+      if (!(name in prev)) return prev;
+      const { [name]: _removed, ...rest } = prev;
+      return rest;
+    });
 
     showToast(`Categoría "${name}" eliminada. Productos reasignados a "${targetFallback}"`, 'info');
+    return true;
+  };
+
+  /**
+   * IVA de una categoría — cada producto sin excepción propia (taxPercent
+   * undefined) lo hereda acá. Todas las categorías arrancan en 21% (ver
+   * migración), así que no tocar nada mantiene el cálculo exactamente
+   * como estaba antes de esta función existir.
+   */
+  const updateCategoryTaxRate = async (name: string, taxPercent: number): Promise<boolean> => {
+    if (blockIfImpersonating()) return false;
+    if (isNaN(taxPercent) || taxPercent < 0 || taxPercent > 100) {
+      showToast('El IVA tiene que ser un número entre 0 y 100', 'error');
+      return false;
+    }
+
+    try {
+      await categoryService.updateTaxRate(name, taxPercent);
+    } catch (e) {
+      console.error('Error updating category tax rate in Supabase:', e);
+      showToast('No se pudo guardar el IVA de la categoría', 'error');
+      return false;
+    }
+
+    setCategoryTaxRates((prev) => ({ ...prev, [name]: taxPercent }));
+    showToast(`IVA de "${name}" actualizado a ${taxPercent}%`, 'success');
     return true;
   };
 
@@ -3447,6 +3514,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addCategory,
         updateCategory,
         deleteCategory,
+        categoryTaxRates,
+        updateCategoryTaxRate,
         lowStockProducts,
         expiringProducts,
         staleCostProducts,
@@ -3460,8 +3529,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setCartItemQuantity,
         removeFromCart,
         clearCart,
-        taxPercent,
-        setTaxPercent,
         orderDiscountPercent,
         setOrderDiscountPercent,
         cartSubtotal,

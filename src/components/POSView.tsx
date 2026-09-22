@@ -9,11 +9,9 @@ import {
   Clock,
   AlertTriangle,
   Lock,
-  Check,
   Tag,
   CreditCard,
   Barcode,
-  Edit2,
   Scale,
 } from 'lucide-react';
 import { ProductCategory, Product, Sale, UNIT_TYPE_LABELS, isFractionalUnit } from '../types';
@@ -38,8 +36,6 @@ export const POSView: React.FC = () => {
     setCartItemQuantity,
     removeFromCart,
     clearCart,
-    taxPercent,
-    setTaxPercent,
     orderDiscountPercent,
     setOrderDiscountPercent,
     cartSubtotal,
@@ -65,26 +61,6 @@ export const POSView: React.FC = () => {
   // Discount modal / popover
   const [showDiscountModal, setShowDiscountModal] = useState<boolean>(false);
   const [discountInput, setDiscountInput] = useState<string>('10');
-
-  // Tax rate modal
-  const [isTaxModalOpen, setIsTaxModalOpen] = useState<boolean>(false);
-  const [taxInput, setTaxInput] = useState<string>(taxPercent.toString());
-
-  useEffect(() => {
-    setTaxInput(taxPercent.toString());
-  }, [taxPercent]);
-
-  const handleApplyTax = (e: React.FormEvent) => {
-    e.preventDefault();
-    const val = parseFloat(taxInput);
-    if (isNaN(val) || val < 0 || val > 100) {
-      showToast('Ingresa un porcentaje de IVA válido entre 0% y 100%', 'error');
-      return;
-    }
-    setTaxPercent(val);
-    setIsTaxModalOpen(false);
-    showToast(`Tasa de IVA configurada al ${val}%`, 'success');
-  };
 
   // Global hardware barcode scanner listener (USB HID Keyboard Emulation)
   useEffect(() => {
@@ -446,16 +422,13 @@ export const POSView: React.FC = () => {
             </div>
 
             <div className="flex justify-between items-center text-slate-700">
-              <button
-                type="button"
-                onClick={() => setIsTaxModalOpen(true)}
-                className="flex items-center gap-1 font-semibold hover:underline hover:text-blue-600 text-left transition-colors group"
-                title="Haga clic para modificar la tasa de IVA"
+              <span
+                className="flex items-center gap-1 font-semibold"
+                title="El IVA de cada producto se configura por categoría en Configuración del Local"
               >
-                <Percent className="w-3.5 h-3.5 text-blue-600 group-hover:scale-110 transition-transform" />
-                <span>Impuestos (IVA {taxPercent}%):</span>
-                <Edit2 className="w-2.5 h-2.5 text-slate-400 group-hover:text-blue-600" />
-              </button>
+                <Percent className="w-3.5 h-3.5 text-blue-600" />
+                <span>Impuestos (IVA):</span>
+              </span>
               <span className="font-medium text-slate-900">{formatARS(cartTax)}</span>
             </div>
           </div>
@@ -579,112 +552,6 @@ export const POSView: React.FC = () => {
                   className="px-4 py-1.5 text-xs font-bold bg-slate-900 text-white rounded-lg"
                 >
                   Aplicar
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-      {/* Tax / IVA Modifier Dialog */}
-      {isTaxModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4">
-          <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl border border-slate-200 animate-in zoom-in-95">
-            <div className="flex items-center gap-2.5 pb-3 border-b border-slate-100 mb-4">
-              <div className="w-9 h-9 rounded-xl bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-600">
-                <Percent className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="font-extrabold text-base text-slate-900">Modificar Tasa de IVA</h3>
-                <p className="text-[11px] text-slate-500">Ajusta el porcentaje impositivo de la venta</p>
-              </div>
-            </div>
-
-            {/* Presets */}
-            <div className="space-y-1.5 mb-4">
-              <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
-                Tasas Frecuentes
-              </label>
-              <div className="grid grid-cols-2 gap-2">
-                {[
-                  { label: '0% (Exento)', val: '0' },
-                  { label: '10.5% (Reducido)', val: '10.5' },
-                  { label: '21% (General)', val: '21' },
-                  { label: '27% (Servicios)', val: '27' },
-                ].map((preset) => (
-                  <button
-                    key={preset.val}
-                    type="button"
-                    onClick={() => setTaxInput(preset.val)}
-                    className={`py-2 px-2.5 rounded-xl text-xs font-bold border transition-all text-left flex items-center justify-between ${
-                      taxInput === preset.val
-                        ? 'bg-blue-50 border-blue-500 text-blue-700 shadow-2xs'
-                        : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
-                    }`}
-                  >
-                    <span>{preset.label}</span>
-                    {taxInput === preset.val && <Check className="w-3.5 h-3.5 text-blue-600 shrink-0" />}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <form onSubmit={handleApplyTax} className="space-y-4">
-              <div>
-                <label className="text-xs font-bold text-slate-700 block mb-1">
-                  Porcentaje Personalizado (%)
-                </label>
-                <div className="relative">
-                  <input
-                    type="number"
-                    step="0.1"
-                    min="0"
-                    max="100"
-                    required
-                    value={taxInput}
-                    onChange={(e) => setTaxInput(e.target.value)}
-                    className="w-full px-3.5 py-2.5 text-base font-bold border border-slate-300 rounded-xl focus:outline-none focus:border-blue-500 font-mono text-slate-900"
-                    placeholder="21"
-                  />
-                  <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">%</span>
-                </div>
-              </div>
-
-              {/* Real-time Calculation Simulation */}
-              <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 text-xs space-y-1.5">
-                <div className="flex justify-between text-slate-500">
-                  <span>Subtotal neto:</span>
-                  <span className="font-semibold text-slate-800">{formatARS(cartSubtotal - cartDiscountAmount)}</span>
-                </div>
-                <div className="flex justify-between text-blue-700 font-semibold">
-                  <span>IVA estimado ({taxInput || 0}%):</span>
-                  <span>
-                    {formatARS(((cartSubtotal - cartDiscountAmount) * (parseFloat(taxInput) || 0)) / 100)}
-                  </span>
-                </div>
-                <div className="pt-1.5 border-t border-slate-200 flex justify-between font-extrabold text-slate-900">
-                  <span>Total con IVA:</span>
-                  <span>
-                    {formatARS(
-                      (cartSubtotal - cartDiscountAmount) +
-                      ((cartSubtotal - cartDiscountAmount) * (parseFloat(taxInput) || 0)) / 100
-                    )}
-                  </span>
-                </div>
-              </div>
-
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setIsTaxModalOpen(false)}
-                  className="px-4 py-2 border border-slate-200 text-xs font-bold text-slate-600 rounded-xl hover:bg-slate-50"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-md transition-colors"
-                >
-                  Guardar Tasa
                 </button>
               </div>
             </form>

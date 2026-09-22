@@ -68,7 +68,17 @@ export interface Product {
   supplierId?: string;
   /** Última vez que se escribió costPrice de verdad (no la fecha de creación). Ver AppContext.staleCostProducts. */
   costUpdatedAt: string;
+  /** Excepción puntual al IVA de su categoría. undefined = hereda el de categoryTaxRates. */
+  taxPercent?: number;
 }
+
+/**
+ * Igual que Partial<Product>, salvo taxPercent: acá puede ser explícitamente
+ * `null` para pedir "borrar la excepción, volver a heredar de la
+ * categoría" — un `undefined` en Partial<Product> ya significa "no tocar
+ * este campo", así que no alcanza para distinguir "no cambiar" de "vaciar".
+ */
+export type ProductUpdateInput = Partial<Omit<Product, 'taxPercent'>> & { taxPercent?: number | null };
 
 /** Una fila ya mapeada y validada, lista para mandar a bulkUpsert(). */
 export interface ProductImportRow {

@@ -18,6 +18,7 @@ import {
   ProductImportRow,
   ContentIdea,
   Supplier,
+  ProductUpdateInput,
 } from '../types';
 
 // ==========================================
@@ -47,6 +48,7 @@ function mapProductRow(row: any): Product {
     expirationDate: row.expiration_date || undefined,
     supplierId: row.supplier_id || undefined,
     costUpdatedAt: row.cost_updated_at,
+    taxPercent: row.tax_percent !== null && row.tax_percent !== undefined ? Number(row.tax_percent) : undefined,
   };
 }
 
@@ -417,6 +419,36 @@ export const categoryService = {
   },
 
   /**
+   * IVA por categoría, como mapa nombre → porcentaje — más cómodo para
+   * AppContext que un array, ya que products.taxPercent se busca por
+   * nombre de categoría a cada rato (ver cartTax).
+   */
+  async getAllTaxRates(): Promise<Record<string, number>> {
+    const { data, error } = await supabase.from('categories').select('name, tax_percent');
+    if (error) {
+      console.error('Error fetching category tax rates:', error);
+      throw error;
+    }
+    const rates: Record<string, number> = {};
+    (data || []).forEach((row) => {
+      rates[row.name] = Number(row.tax_percent);
+    });
+    return rates;
+  },
+
+  async updateTaxRate(name: string, taxPercent: number): Promise<void> {
+    const { error } = await supabase
+      .from('categories')
+      .update({ tax_percent: taxPercent })
+      .eq('name', name);
+
+    if (error) {
+      console.error('Error updating category tax rate:', error);
+      throw error;
+    }
+  },
+
+  /**
    * Da de alta las categorías que todavía no existan, sin tocar las que ya
    * están (ignoreDuplicates). Pensado para la importación masiva: un
    * archivo de 12.000 productos puede traer categorías nuevas mezcladas
@@ -477,6 +509,7 @@ export const productService = {
         unit_type: product.unitType || 'UNIDAD',
         expiration_date: product.expirationDate || null,
         supplier_id: product.supplierId || null,
+        tax_percent: product.taxPercent ?? null,
       })
       .select()
       .single();
@@ -489,7 +522,7 @@ export const productService = {
     return mapProductRow(data);
   },
 
-  async update(id: string, updates: Partial<Product>): Promise<void> {
+  async update(id: string, updates: ProductUpdateInput): Promise<void> {
     const dbUpdates: Record<string, any> = {
       updated_at: new Date().toISOString(),
     };
@@ -507,6 +540,10 @@ export const productService = {
     if (updates.unitType !== undefined) dbUpdates.unit_type = updates.unitType;
     if (updates.expirationDate !== undefined) dbUpdates.expiration_date = updates.expirationDate || null;
     if (updates.supplierId !== undefined) dbUpdates.supplier_id = updates.supplierId || null;
+    // null explícito = "borrar la excepción, volver a heredar el IVA de la
+    // categoría" — distinto de undefined ("no tocar este campo"). Ver
+    // ProductUpdateInput.
+    if (updates.taxPercent !== undefined) dbUpdates.tax_percent = updates.taxPercent;
     // Pasamanos mecánico: quien llama (AppContext.updateProduct) decide si
     // el costo cambió de verdad y sólo ahí manda este campo — acá no se
     // deriva de costPrice, para no reiniciar el reloj de "hace cuánto no se
